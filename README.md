@@ -17,8 +17,8 @@ A physical Android device is recommended when testing local AI inference.
 1. Clone the repository:
 
    ```bash
-   git clone https://github.com/XerojUlgasan/locquiz.git
-   cd locquiz
+   git clone https://github.com/XerojUlgasan/bukal.git
+   cd bukal
    ```
 
 2. Open the repository root in Android Studio.
