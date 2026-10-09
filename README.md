@@ -6,6 +6,8 @@ Bukal is an offline-first Android study app that turns imported lesson documents
 
 To install Bukal without building it yourself, visit the [official Bukal website](https://bukal-web.zxero.dev/) and select **Download now**.
 
+## if **Download now** is stuck at 100%, please try another browser such as firefox or brave.
+
 The website is open source in the [Bukal Web repository](https://github.com/XerojUlgasan/bukal-web).
 
 ## Requirements
