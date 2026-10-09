@@ -2,12 +2,18 @@
 
 Bukal is an offline-first Android study app that turns imported lesson documents into source-grounded quizzes. Quiz generation, answer checking, document search, history, and profile data stay on the device after the required AI models are downloaded.
 
+## Get Bukal
+
+To install Bukal without building it yourself, visit the [official Bukal website](https://bukal-web.zxero.dev/) and select **Download now**.
+
+The website is open source in the [Bukal Web repository](https://github.com/XerojUlgasan/bukal-web).
+
 ## Requirements
 
 - Android Studio with Android SDK Platform 37
 - JDK 21 configured as the Gradle JDK
 - An Android 8.0 (API 26) or newer device or emulator
-- Internet access for the first model download
+- Internet access for the initial Gradle dependency sync and model downloads
 - At least 1 GB of free device storage for the default quiz and embedding models
 
 A physical Android device is recommended when testing local AI inference.
@@ -28,17 +34,23 @@ A physical Android device is recommended when testing local AI inference.
 
 ## Run from the command line
 
-Make sure the Android SDK is configured through `ANDROID_HOME` or `local.properties`, then run:
+Make sure the Android SDK is configured through `ANDROID_HOME` or `local.properties`, then build the debug APK:
 
 ```bash
 ./gradlew assembleDebug
-./gradlew installDebug
 ```
 
 The generated APK is located at:
 
 ```text
 app/build/outputs/apk/debug/app-debug.apk
+```
+
+To install it on a running emulator or a USB-connected device with debugging enabled, confirm that the device is listed and then run:
+
+```bash
+adb devices
+./gradlew installDebug
 ```
 
 On Windows, use `gradlew.bat` instead of `./gradlew`.
