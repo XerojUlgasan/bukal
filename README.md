@@ -63,6 +63,8 @@ On Windows, use `gradlew.bat` instead of `./gradlew`.
 4. Continue to Home and import a text-based TXT, PDF, DOCX, or PPTX lesson. Scanned or image-only documents are not supported.
 5. Select one or more passages, choose quiz types, and start the quiz.
 
+#NOTE: When selecting a model, please choose GEMMA 4 E2B IT for better performance
+
 The AI model files are intentionally not included in the repository or APK. Once the required models are installed, the study flow can run without an internet connection.
 
 ## Verify the project
