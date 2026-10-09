@@ -23,7 +23,7 @@ class QuizDistributionTest {
     fun remainderFollowsSelectedTypeOrder() {
         val result = calculateQuestionDistribution(
             listOf(
-                QuizType.MATCHING,
+                QuizType.TRUE_FALSE,
                 QuizType.EXPLANATION,
                 QuizType.IDENTIFICATION,
             ),
@@ -31,7 +31,7 @@ class QuizDistributionTest {
 
         assertEquals(
             listOf(
-                QuestionTypeCount(QuizType.MATCHING, 2),
+                QuestionTypeCount(QuizType.TRUE_FALSE, 2),
                 QuestionTypeCount(QuizType.EXPLANATION, 2),
                 QuestionTypeCount(QuizType.IDENTIFICATION, 1),
             ),

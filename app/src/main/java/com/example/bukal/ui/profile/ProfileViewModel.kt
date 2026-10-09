@@ -8,6 +8,7 @@ import com.example.bukal.data.local.AttemptHistoryRow
 import com.example.bukal.data.local.AttemptStatuses
 import com.example.bukal.data.local.BukalDatabase
 import com.example.bukal.data.local.DailyActivity
+import com.example.bukal.data.local.QuizTypes
 import java.time.LocalDate
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -83,7 +84,7 @@ internal fun List<AttemptHistoryRow>.toProfileUiState(
     val streaks = calculateStreaks(activeDates, today)
     val completedTypes = completed
         .flatMap { it.quizTypes.split('|') }
-        .filter(String::isNotBlank)
+        .filter { it in QuizTypes.current }
         .toSet()
     val completedQuizCount = dailyActivity.sumOf(DailyActivity::completedCount)
     val availableYears = (activeDates.map { it.year } + today.year + selectedYear)

@@ -222,6 +222,13 @@ fun SavedQuizRecord.toQuizQuestions(): List<QuizQuestion> = questions
                     ),
                     answerIndex = requireNotNull(question.correctOptionIndex),
                 )
+                QuestionType.TRUE_FALSE -> QuestionAnswer.MultipleChoice(
+                    options = listOf(
+                        requireNotNull(question.option0),
+                        requireNotNull(question.option1),
+                    ),
+                    answerIndex = requireNotNull(question.correctOptionIndex),
+                )
                 QuestionType.MATCHING -> QuestionAnswer.Matching(
                     record.matchingPairs.sortedBy(MatchingPairEntity::leftPosition).map { pair ->
                         MatchingPair(

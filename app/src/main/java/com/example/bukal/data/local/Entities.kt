@@ -299,10 +299,13 @@ object QuizTypes {
     const val MULTIPLE_CHOICE = "multiple_choice"
     const val FILL_IN_THE_BLANK = "fill_in_the_blank"
     const val IDENTIFICATION = "identification"
+    const val TRUE_FALSE = "true_false"
+    // Read-only compatibility for quizzes created before true/false replaced matching.
     const val MATCHING = "matching"
     const val EXPLANATION = "explanation"
 
-    val all = setOf(MULTIPLE_CHOICE, FILL_IN_THE_BLANK, IDENTIFICATION, MATCHING, EXPLANATION)
+    val current = setOf(MULTIPLE_CHOICE, FILL_IN_THE_BLANK, IDENTIFICATION, TRUE_FALSE, EXPLANATION)
+    val all = current + MATCHING
     val aiEvaluated = setOf(FILL_IN_THE_BLANK, IDENTIFICATION, EXPLANATION)
 }
 

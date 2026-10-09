@@ -112,6 +112,7 @@ CREATE TABLE questions (
                 'multiple_choice',
                 'fill_in_the_blank',
                 'identification',
+                'true_false',
                 'matching',
                 'explanation'
             )
@@ -162,6 +163,17 @@ CREATE TABLE questions (
             AND length(trim(option_2)) > 0
             AND length(trim(option_3)) > 0
             AND correct_option_index BETWEEN 0 AND 3
+            AND reference_answer IS NULL
+            AND grading_criteria IS NULL
+        )
+        OR
+        (
+            quiz_type = 'true_false'
+            AND option_0 = 'True'
+            AND option_1 = 'False'
+            AND option_2 IS NULL
+            AND option_3 IS NULL
+            AND correct_option_index BETWEEN 0 AND 1
             AND reference_answer IS NULL
             AND grading_criteria IS NULL
         )

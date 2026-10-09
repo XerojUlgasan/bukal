@@ -20,8 +20,8 @@ The first working milestone lets a learner:
 After that flow passes, complete the required product expansion:
 
 1. Let the learner select one or more quiz types.
-2. Request five questions distributed across multiple choice, fill in the blank, identification, matching, and explanation; continue with the successful subset when individual slots fail.
-3. Check multiple choice and matching deterministically.
+2. Request five questions distributed across multiple choice, fill in the blank, identification, true or false, and explanation; continue with the successful subset when individual slots fail.
+3. Check multiple choice and true or false deterministically.
 4. Evaluate fill in the blank, identification, and explanation locally against their hidden reference answer and the top five source matches.
 5. Use only boolean local-AI grading, with `false` whenever the model is unsure, and generate an explanation only on request.
 6. Provide short on-demand local hints without revealing answers.
@@ -31,7 +31,7 @@ After that flow passes, complete the required product expansion:
 ## Current Implementation Status
 
 - The launcher opens the model-setup gate and a single Navigation Compose graph now connects all ten approved mock screens.
-- Before generation, Bukal checks Room for a quiz already generated for the selected passage and opens those stored questions instead of running local AI again. New generation sends only the bounded passage text to the selected local quiz model, validates one type-specific response per requested slot, and atomically saves the successful question set. Submission scores multiple choice and matching immediately. Each answered open item embeds a query, retrieves up to five chunks from the selected passage, and starts a fresh local quiz-model evaluation grounded only in those matches. First completion and later retakes atomically update the same quiz graph; History shows its latest previous score and retained highest score.
+- Before generation, Bukal checks Room for a quiz already generated for the selected passage and opens those stored questions instead of running local AI again. New generation sends the bounded passage plus one focus excerpt copied from it to the selected local quiz model, validates one type-specific response per requested slot, and atomically saves the successful question set. Numbered items are focused individually, with paragraph and sentence fallbacks; duplicate retries advance focus while shape retries retain it and report the specific problem. Submission scores multiple choice and true or false immediately. Each answered open item embeds a query, retrieves up to five chunks from the selected passage, and starts a fresh local quiz-model evaluation grounded only in those matches. First completion and later retakes atomically update the same quiz graph; History shows its latest previous score and retained highest score.
 - History and Profile reuse `BukalBottomNavigation`. Focused quiz-flow screens from Quiz Setup through Results use their own Back, Close, Cancel, Previous/Next, or Done controls without the root footer.
 - The Profile heatmap is horizontally scrollable and uses completed-only Room activity with `0` through `4+` intensity levels. Year switching, cross-year streak calculation, achievements, and milestone progress are derived locally from completed attempts and stored quiz types; Home reuses the calculated current streak and refreshes it after quiz completion.
 - Quiz Setup intentionally uses a focused Back action and sticky Generate action without the root footer, matching its approved reference and nested-flow role.
@@ -154,12 +154,12 @@ There is no server-side branch in this flow.
 - Assign stable TXT passage IDs such as `TXT-P001`.
 - Limit model input to the selected passage, approximately 3,000 to 4,000 characters; do not send the entire document.
 - Ask for JSON only and parse it with `kotlinx.serialization`. Remove at most one outer plain or `json` Markdown code fence; reject commentary and all other surrounding text.
-- Generate each question in its own fresh, unsaved model session. Send only the selected passage text as the user message and never replay conversation history.
-- Model output contains only a non-empty question and valid data for the requested type. Assign the type, question IDs, source linkage, and matching-pair IDs locally.
+- Generate each question in its own fresh, unsaved model session. Send only source material as the user message: the selected passage and one focus excerpt copied from it. Never replay conversation history.
+- Model output contains only a non-empty question and valid data for the requested type. Assign the type, question IDs, and source linkage locally.
 - Multiple choice has exactly four non-empty unique options and correct answer text that matches one option; derive the internal answer index locally.
 - Discourage negative multiple-choice prompts using `NOT` or `EXCEPT` wording, but accept otherwise usable output.
 - Fill in the blank accepts a blank of any underscore length or a direct question when it has a hidden reference answer.
-- Matching requests three pairs but accepts at least two unique prompts, the same number of unique answers, and a complete expected mapping between stable IDs.
+- True or false returns one clear yes-or-no question ending in a question mark and a JSON boolean answer, which Bukal maps to the deterministic **True** and **False** choices. Reject statement form and open-ended What, Who, Where, When, Why, How, or Which prompts.
 - Identification and explanation have a hidden reference answer.
 - The open-answer evaluator handles fill in the blank, identification, and explanation. It marks common explicit non-answers false locally. Otherwise Bukal embeds a query containing the question, learner response, and hidden answer; searches only the selected passage; and gives the local quiz model a labeled plain-text request containing up to five highest-similarity chunks. The model returns only `true` or `false`, using `false` whenever it is unsure.
 - On-demand hints return one short plain-text clue, do not reveal the answer, use a fresh unsaved session, and are not persisted.
@@ -196,7 +196,7 @@ external-files/
   models/
 ```
 
-Save every successful generated quiz, its one-to-five question rows, and any matching pairs in one Room transaction before answering. Mark it `saved` until checking atomically updates it to `completed`. Later retakes update the same row and child graph, keep `earned_points` as the latest previous score, and retain the maximum in `highest_earned_points`. Store the learner response and result directly on each completed question. Replace one passage's search chunks in a separate indexing transaction.
+Save every successful generated quiz and its one-to-five question rows in one Room transaction before answering. The matching-pairs table remains only for quizzes saved by older builds. Mark the quiz `saved` until checking atomically updates it to `completed`. Later retakes update the same row and child graph, keep `earned_points` as the latest previous score, and retain the maximum in `highest_earned_points`. Store the learner response and result directly on each completed question. Replace one passage's search chunks in a separate indexing transaction.
 
 The exact version-3 ownership, constraints, indexes, migrations, and delete behavior live in the [SQLite schema](../../docs/sqlite-schema.md) and executable [reference DDL](../../docs/sqlite-schema.sql). Keep the reviewed six-table shape. Saved versus completed lifecycle is represented by `attempts.status`; do not add response, evaluation, accepted-answer, selected-type, draft/session, activity-summary, streak, model-catalog, settings, account, or per-question-type tables unless the documented flow changes and the schema is reviewed again.
 
@@ -244,7 +244,7 @@ When time is short during the hackathon, finish the complete MCQ milestone befor
 - Confirm attempts survive app restart.
 - After model installation, enable airplane mode, relaunch, and generate another quiz.
 - Confirm every requested quiz type is generated with valid type-specific data and locally linked to the selected passage.
-- Confirm multiple choice and matching do not call AI for answer checking.
+- Confirm multiple choice and true or false do not call AI for answer checking.
 - Confirm fill in the blank, identification, and explanation retrieve up to five selected-passage chunks before boolean local-AI evaluation, default unsure or invalid output to `false`, and generate explanations only after a tap.
 - Confirm Granite chunk/query embeddings run on the presentation phone, use matching model IDs and dimensions, and return source-linked results without network access.
 - Confirm typed attempts survive relaunch and restore their results.

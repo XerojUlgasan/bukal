@@ -33,13 +33,13 @@ class DatabaseQuestionTypesTest {
                 ),
             ),
             QuestionRecord(
-                question = baseQuestion(3, QuizTypes.MATCHING).copy(
+                question = baseQuestion(3, QuizTypes.TRUE_FALSE).copy(
+                    option0 = "True",
+                    option1 = "False",
+                    correctOptionIndex = 0,
+                    selectedOptionIndex = 0,
                     result = QuestionResults.CORRECT,
                     earnedPoints = 1.0,
-                ),
-                matchingPairs = listOf(
-                    matchingPair("l1", "Alpha", "r1", "First", 0),
-                    matchingPair("l2", "Beta", "r2", "Second", 1),
                 ),
             ),
             QuestionRecord(
@@ -120,21 +120,4 @@ class DatabaseQuestionTypesTest {
             referenceAnswer = "Alpha",
             result = result,
         )
-
-    private fun matchingPair(
-        leftId: String,
-        leftText: String,
-        rightId: String,
-        rightText: String,
-        position: Int,
-    ) = MatchingPairEntity(
-        questionId = 0,
-        leftId = leftId,
-        leftText = leftText,
-        leftPosition = position,
-        rightId = rightId,
-        rightText = rightText,
-        rightPosition = position,
-        selectedRightId = rightId,
-    )
 }

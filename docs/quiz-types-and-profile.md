@@ -11,10 +11,10 @@ Bukal remains local-first. Question generation, answer checking, attempt history
 | Multiple choice | Select one of four options | Deterministic answer index |
 | Fill in the blank | Enter the missing word or short phrase | Local-AI evaluation against hidden criteria and source evidence |
 | Identification | Enter a term, name, or short answer in the learner's own wording | Local-AI evaluation against hidden criteria and source evidence |
-| Matching | Connect each prompt with its corresponding answer | Deterministic expected-pair comparison |
+| True or false | Select True or False | Deterministic boolean comparison |
 | Explanation | Write a short explanation in the learner's own words | Local-AI evaluation against hidden criteria and source evidence |
 
-The model receives only the selected passage as its user message. It returns no IDs, source IDs, evidence, or explanations. Bukal assigns internal question IDs and links every question to the selected passage locally. Passage grounding reduces unsupported output, but it does not prove that a generated question or evaluation is correct.
+The model receives only source material as its generation user message: the selected passage and one focus excerpt copied from that passage. Numbered items are focused individually; unnumbered text falls back to paragraphs, then sentences. It returns no IDs, source IDs, evidence, or explanations. Bukal assigns internal question IDs and links every question to the selected passage locally. Passage grounding reduces unsupported output, but it does not prove that a generated question or evaluation is correct.
 
 ## Quiz Configuration
 
@@ -37,7 +37,7 @@ Every accepted question has:
 - Non-empty question or instruction
 - Type-specific answer data
 
-Bukal assigns the five types before generation. The model returns one question as JSON from each fresh, unsaved session, using the system instruction dedicated to that type. The user message contains only the selected passage text. Before strict parsing, the app may remove exactly one outer plain or `json` Markdown code fence, but it must reject commentary or other surrounding text. Bukal validates every field deterministically, assigns the type and internal IDs, and links the question to the selected passage. Each invalid question receives up to two corrective retries before the app shows a clear error instead of inventing missing answer data.
+Bukal assigns the five types before generation. The model returns one question as JSON from each fresh, unsaved session, using the system instruction dedicated to that type. The user message contains the selected passage and one focus excerpt copied from it. Before strict parsing, the app may remove exactly one outer plain or `json` Markdown code fence, but it must reject commentary or other surrounding text. Bukal validates every field deterministically, assigns the type and internal IDs, and links the question to the selected passage. Each invalid question receives up to two corrective retries with a specific validation message. Duplicate retries advance to another focus excerpt; missing-field or malformed-shape retries retain the current focus. The app never invents missing answer data.
 
 ## Type-Specific Contracts
 
@@ -63,13 +63,14 @@ Bukal assigns the five types before generation. The model returns one question a
 - Learner enters a short free-text response
 - Granite retrieves the most relevant selected-passage chunks, then local AI evaluates reasonable wording variations against the reference answer and those matches
 
-### Matching
+### True or False
 
-- At least two unique left-side prompts; generation requests three
-- The same number of unique right-side answers
-- A deterministic expected mapping between their stable IDs
-- Right-side answers may be shuffled for display
-- A matching question receives full credit only when all pairs are correct; the result view may still show which individual pairs were wrong
+- One clear yes-or-no question ending in a question mark that can be judged from the selected passage
+- No statement form or open-ended What, Who, Where, When, Why, How, or Which prompt
+- A JSON boolean answer generated as `true` or `false`
+- Two learner choices displayed as **True** and **False**
+- Correctness checked locally without an AI call
+- Avoid tricky negative wording and unrelated facts
 
 ### Explanation
 
@@ -102,9 +103,9 @@ Grading does not generate feedback. Results show the verdict and original passag
 
 ## On-Demand Hints
 
-The learner may request one short local-AI hint for the current question. Each hint uses a fresh, unsaved model session and receives only the question, visible choices or matching items, relevant source passage, and source ID.
+The learner may request one short local-AI hint for the current question. Each hint uses a fresh, unsaved model session and receives only the question, visible choices, relevant source passage, and source ID.
 
-Hints return plain text in the question's language. They must not reveal the correct option, missing term, complete matching pair, or write the learner's explanation response. Hints exist only during the active quiz and are not saved in History.
+Hints return plain text in the question's language. They must not reveal the correct option, missing term, or write the learner's explanation response. Hints exist only during the active quiz and are not saved in History.
 
 ## Quiz Interface Requirements
 
@@ -113,12 +114,12 @@ Use a type-specific answer component while keeping the same question progress an
 - Multiple choice: four selectable options
 - Fill in the blank: one short text field
 - Identification: one short free-text field
-- Matching: pair-selection or equivalent accessible matching controls
+- True or false: two selectable options
 - Explanation: one multi-line text field
 
 Do not reveal the correct answer, hidden criteria, or selected source passage before submission when doing so would give away the answer.
 
-When the learner submits a quiz containing fill in the blank, identification, or explanation items, show a local **Checking answers...** state while the quiz model evaluates those responses. Multiple choice and matching should be checked immediately without calling the model.
+When the learner submits a quiz containing fill in the blank, identification, or explanation items, show a local **Checking answers...** state while the quiz model evaluates those responses. Multiple choice and true or false should be checked immediately without calling the model.
 
 ## Results and Evidence
 
@@ -321,7 +322,7 @@ Use the reviewed [SQLite schema](sqlite-schema.md) as the entity, relationship, 
 - `search_chunks` stores overlapping text, offsets, and one optional embedding per chunk.
 - `attempts` stores one saved generated quiz per passage, its quiz model, generation time, status, latest completion date and score, and highest score.
 - `questions` stores generated content, hidden answer data, learner response, result, and points in one row. On-demand explanations are transient.
-- `matching_pairs` stores expected matching pairs and learner selections.
+- `matching_pairs` is retained only so quizzes saved by older builds can still be reopened; new quizzes do not write matching rows.
 
 Keep this six-table shape flat. Do not add separate draft, quiz, one-to-one response or evaluation, accepted-answer, selected-types, profile, or streak tables. Save each generated question graph in one transaction. First completion and later retakes update that same graph atomically, replacing learner responses and the latest score while retaining the highest score. Replace a passage's search chunks in one indexing transaction.
 

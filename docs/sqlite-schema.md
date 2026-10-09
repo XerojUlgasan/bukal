@@ -21,7 +21,7 @@ selected passage
   -> yearly activity and streaks derived from completed attempts
 ```
 
-Learner responses stay in memory while answering. Immediately after a full or partial successful generation, the app saves one `saved` quiz, its one to five questions, and any matching pairs in a single Room transaction. Before generation, Bukal reuses an existing quiz for the selected passage. Checking updates that same row and child graph atomically. A retake replaces its latest responses and score, retains its highest score, and never creates another History row.
+Learner responses stay in memory while answering. Immediately after a full or partial successful generation, the app saves one `saved` quiz and its one to five questions in a single Room transaction. Before generation, Bukal reuses an existing quiz for the selected passage. Checking updates that same row and child graph atomically. A retake replaces its latest responses and score, retains its highest score, and never creates another History row.
 
 ## The Six Tables
 
@@ -32,7 +32,7 @@ Learner responses stay in memory while answering. Immediately after a full or pa
 | `search_chunks` | Overlapping pieces of a passage. Every chunk has its own optional embedding, so one document can produce many searchable vectors. |
 | `attempts` | One saved generated quiz per passage, its quiz model ID, generation time, status, latest completion time/local date, latest score, highest score, and possible points. |
 | `questions` | The generated question, type-specific answer key, learner response, boolean-derived result, and score. |
-| `matching_pairs` | Expected matching pairs and the learner's selected right-side item. This is the only repeating child structure that does not fit cleanly on `questions`. |
+| `matching_pairs` | Legacy matching data retained only so quizzes saved by older builds can still be reopened. New quizzes do not write rows here. |
 
 Because schema version 1 made completion time/date non-null, a `saved` row uses its generation time/date as temporary values in those columns. The `status` column is authoritative: completion and Profile queries ignore those placeholders until the row is replaced by a `completed` attempt.
 
@@ -68,15 +68,16 @@ For the first local implementation, load vectors produced by the active model an
 
 ## Question and Evaluation Shape
 
-The five quiz types share one `questions` table:
+The five current quiz types share one `questions` table:
 
 - Multiple choice uses `option_0` through `option_3` and `correct_option_index`.
+- True or false uses `option_0 = True`, `option_1 = False`, and `correct_option_index`; the remaining option columns stay null.
 - Fill in the blank, identification, and explanation use `reference_answer`. The nullable `grading_criteria` column remains in the reviewed version-1 schema but is not required by the current generator or evaluator. The local generative quiz model evaluates the learner's `text_response`.
-- Matching uses child `matching_pairs` rows. Each expected pair also holds `selected_right_id` after the learner answers.
+- Legacy matching questions use child `matching_pairs` rows. Each expected pair also holds `selected_right_id` after the learner answers.
 
 `selected_option_index`, `text_response`, `result`, and points are stored directly on the question. The version-1 `ai_feedback` and `evaluation_evidence` columns remain nullable for schema compatibility but current boolean grading leaves them null; on-demand explanations are transient and are not persisted.
 
-The embedding model performs semantic retrieval and does not grade answers. For open-answer grading, it retrieves up to five chunks from the selected passage; the local generative quiz model uses those matches to return only `true` or `false`, with `false` when unsure. A separate top-five retrieval and plain-text model call happens only when the learner requests an explanation. Multiple choice and matching remain deterministic.
+The embedding model performs semantic retrieval and does not grade answers. For open-answer grading, it retrieves up to five chunks from the selected passage; the local generative quiz model uses those matches to return only `true` or `false`, with `false` when unsure. A separate top-five retrieval and plain-text model call happens only when the learner requests an explanation. Multiple choice and true or false remain deterministic.
 
 ## Profile, Heatmap, and Streaks
 
@@ -109,9 +110,9 @@ The executable reference DDL demonstrates the complete SQLite constraints. Room 
 
 1. A saved quiz or completed attempt contains one to five questions with contiguous positions. Saved rows contain only unanswered questions and no learner responses.
 2. Every question's evidence is an exact substring of the selected passage.
-3. Multiple-choice options are distinct and deterministic answers agree with the answer key.
+3. Multiple-choice options are distinct, true-or-false rows contain exactly the two fixed choices, and deterministic answers agree with their answer keys.
 4. Fill-in-the-blank, identification, and explanation evaluations save only correct, incorrect, or unanswered results and do not store generated feedback.
-5. Generation creates three complete matching pairs; saved matching data requires at least two complete pairs, and every selected right ID belongs to that question.
+5. Legacy matching data requires at least two complete pairs, and every selected right ID belongs to that question.
 6. Question points sum to the attempt totals. Correct answers earn one point; incorrect and unanswered answers earn zero out of one possible point.
 7. On a `completed` row, `completed_local_date` is the real device-local calendar date captured when the attempt completes. Saved-row placeholders never enter completion queries.
 8. `highest_earned_points` is at least the latest `earned_points` and never exceeds `possible_points`.

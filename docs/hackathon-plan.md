@@ -35,8 +35,8 @@ This is the first working milestone and remains the ten-hour hackathon target. T
 After the first multiple-choice milestone works end to end, the learner must also be able to:
 
 1. Choose one or more quiz types before generation.
-2. Request five questions distributed across multiple choice, fill in the blank, identification, matching, and explanation; continue with the successful questions when individual slots exhaust their retries.
-3. Receive deterministic checking for multiple choice and matching.
+2. Request five questions distributed across multiple choice, fill in the blank, identification, true or false, and explanation; continue with the successful questions when individual slots exhaust their retries.
+3. Receive deterministic checking for multiple choice and true or false.
 4. Have fill in the blank, identification, and explanation responses evaluated by the downloaded local quiz model against a hidden reference answer and the top five source matches.
 5. Receive a boolean correct or incorrect result, with `false` used whenever the model is unsure, and request a short explanation only when needed.
 6. Request a short local hint that does not reveal the answer.
@@ -76,7 +76,7 @@ The detailed contracts and UI rules for this expansion are authoritative in [Qui
 
 - Fill-in-the-blank questions
 - Identification questions with local-AI evaluation
-- Matching questions
+- True-or-false questions
 - Explanation questions with local-AI evaluation
 - On-demand local hints during an active quiz
 - Quiz-type selection and mixed-type quiz generation
@@ -129,7 +129,7 @@ The detailed contracts and UI rules for this expansion are authoritative in [Qui
 6. The imported lesson is added to Home without hiding previously imported lessons.
 7. The user selects a passage.
 8. The application first checks Room for a quiz already generated for that passage. If one exists, it opens the stored questions without running AI again.
-9. Otherwise, the application requests each of the five questions from its own fresh, unsaved local-model session. Every user message contains only the selected passage text.
+9. Otherwise, the application requests each of the five questions from its own fresh, unsaved local-model session. Every user message contains the selected passage plus one focus excerpt copied from that passage; numbered items are focused individually, with paragraph and sentence fallbacks for unnumbered text.
 10. Each type-specific prompt returns one small JSON object.
 11. The application rejects malformed or unsupported output and retries only that question up to twice. An exhausted slot is skipped without discarding successful questions.
 12. The accepted full or partial quiz is saved locally and appears in History for later retakes.
@@ -141,10 +141,10 @@ The detailed contracts and UI rules for this expansion are authoritative in [Qui
 
 1. The learner selects one or more quiz types before generation.
 2. Bukal distributes five requested questions across the selected types.
-3. Bukal requests each question from a fresh, unsaved model session using the prompt for its assigned type, with the selected passage as the complete user message.
+3. Bukal requests each question from a fresh, unsaved model session using the prompt for its assigned type, with the selected passage and one copied focus excerpt as the complete user message.
 4. The application validates each minimal type-specific JSON object and retries only the invalid question up to twice. It continues with a partial quiz and reports failed slots.
 5. During answering, the learner may request a short hint from a separate fresh, unsaved session.
-6. Multiple choice and matching are checked deterministically.
+6. Multiple choice and true or false are checked deterministically.
 7. For fill in the blank, identification, and explanation, Granite retrieves the five closest indexed chunks from the selected passage, then the local quiz model evaluates the response against the reference answer and only those matches.
 8. The result screen shows the boolean local-AI verdict and offers an on-demand, source-grounded **Explain** action.
 9. The generated question set is saved before answering; completion adds its latest score, highest score, completion timestamp, and local date.
@@ -209,7 +209,7 @@ There is no backend, cloud database, or project server. Room uses a private loca
 | `PromptBuilder` | Produces strict typed-question, answer-evaluation, and hint instructions |
 | `QuizGenerator` | Runs local inference |
 | `QuestionValidator` | Rejects invalid common or type-specific model output |
-| `DeterministicAnswerEvaluator` | Checks multiple choice and matching |
+| `DeterministicAnswerEvaluator` | Checks multiple choice and true or false |
 | `AiAnswerEvaluator` | Retrieves the top five compatible chunks from the selected passage, then evaluates fill in the blank, identification, and explanation locally against those matches and the hidden criteria |
 | `EmbeddingModelManager` | Verifies and loads the pinned local embedding model package |
 | `SearchIndexer` | Splits passages into overlapping chunks and stores one Granite vector per chunk |
@@ -326,7 +326,7 @@ For future PDF support, use IDs such as `PDF-P03-B02`. Reject scanned or image-o
 
 Require the model to return JSON only.
 
-The selected passage text is the complete user message. Bukal assigns the five requested types first, then requests every question in its own fresh session with a type-specific system instruction. Each response is one JSON object and only that question is retried up to twice when invalid. Before strict parsing, Bukal may remove exactly one outer plain or `json` Markdown code fence; it does not extract JSON from commentary or otherwise enable lenient parsing.
+The selected passage and one focus excerpt copied from it form the complete user message. Numbered items become separate focus candidates; otherwise Bukal uses paragraphs, then sentences. Bukal assigns the five requested types first, then requests every question in its own fresh session with a type-specific system instruction. Each response is one JSON object and only that question is retried up to twice when invalid. A duplicate-question retry advances to another focus candidate, while a malformed-shape retry keeps the same focus and names the specific validation problem. Before strict parsing, Bukal may remove exactly one outer plain or `json` Markdown code fence; it does not extract JSON from commentary or otherwise enable lenient parsing.
 
 ```json
 {
@@ -344,11 +344,11 @@ The assigned type selects one strict response shape:
 multiple_choice   -> question, options[4], answer
 fill_in_the_blank -> question, answer
 identification    -> question, answer
-matching          -> question, pairs[3]{left, right}
+true_false        -> question, answer (JSON boolean)
 explanation       -> question, answer
 ```
 
-The model does not need to return a type, IDs, source IDs, evidence, criteria, or explanations. Bukal already knows the requested type, derives the internal multiple-choice answer index from the returned answer text, and assigns question IDs, source linkage, and matching-pair IDs locally. Harmless unknown fields are ignored. Missing data required by the app, duplicated questions, and unusable type-specific data fail validation; only that question is retried up to twice.
+The model does not need to return a type, IDs, source IDs, evidence, criteria, or explanations. Bukal already knows the requested type, derives internal choice indexes locally, and assigns question IDs and source linkage. Harmless unknown fields are ignored. Missing data required by the app, duplicated questions, and unusable type-specific data fail validation; only that question is retried up to twice.
 
 ### Question Validation
 
@@ -357,6 +357,7 @@ Accept a generated question only when:
 - There are exactly four options.
 - All options are non-empty and unique.
 - The returned answer matches exactly one option; Bukal derives its internal index.
+- A true-or-false prompt is a yes-or-no question ending in `?`, not a statement or open-ended question, and its answer is a JSON boolean.
 - The question is non-empty and unique among the accepted questions.
 - The returned data contains the fields needed to display and score its assigned type.
 
@@ -375,12 +376,12 @@ The multiple-choice contract above is the first implementation milestone. The ex
 - Multiple choice
 - Fill in the blank
 - Identification
-- Matching
+- True or false
 - Explanation
 
-All five output types use only a question plus their required answer data. Bukal assigns the type, question IDs, source linkage, matching-pair IDs, and internal multiple-choice answer index locally. Fill in the blank, identification, and explanation carry only a hidden reference answer.
+All five output types use only a question plus their required answer data. Bukal assigns the type, question IDs, source linkage, and internal choice indexes locally. Fill in the blank, identification, and explanation carry only a hidden reference answer.
 
-Generation uses one fresh, unsaved model session per question. The user message is only the selected passage text. If validation fails, Bukal retries only that question with the validation error in the system instruction and sends the same passage text again. After two failed retries, it skips that slot, keeps the other accepted questions, and reports the failed count. It never sends conversation history back to the model.
+Generation uses one fresh, unsaved model session per question. The user message contains only source material: the selected passage and one focus excerpt copied from it. If validation fails, Bukal retries only that question with a concise, specific validation error in the system instruction. Duplicate-question retries move to another source focus; shape errors keep the same focus. After two failed retries, it skips that slot, keeps the other accepted questions, and reports the failed count. It never sends conversation history back to the model.
 
 Fill in the blank, identification, and explanation responses are evaluated by the local quiz model because valid answers may use different wording. Common explicit non-answers such as `idk` are marked false locally without model inference. Otherwise, Bukal first embeds a query made from the question, learner response, and hidden reference answer, then retrieves up to five compatible chunks from the selected passage. The evaluator receives those fields as labeled plain text rather than JSON, with the learner answer kept distinct from the reference and source text. It returns only `true` or `false`; `false` is required when the model is unsure. The Granite embedding model retrieves evidence but never assigns the verdict.
 
@@ -428,14 +429,15 @@ data class Attempt(
     val completedLocalDate: String,
     val quizTypes: List<String>,
     val score: Double,
+    val highestScore: Double,
     val total: Double,
     val responses: List<AttemptResponse>
 )
 ```
 
-The example is conceptual: the actual response model must support option selections, text responses, matching pairs, and local-AI evaluation verdicts. The Profile page derives its yearly heatmap and streaks from `completedLocalDate`; app opens and abandoned quizzes do not count.
+The example is conceptual: the actual response model must support option selections, text responses, and local-AI evaluation verdicts. The Profile page derives its yearly heatmap and streaks from `completedLocalDate`; app opens and abandoned quizzes do not count.
 
-Save a quiz, its questions, flattened learner results, and matching pairs in one Room transaction. A retake updates the same quiz graph, keeps the latest score in `earnedPoints`, and retains the maximum in `highestEarnedPoints`. Index completion time and `completedLocalDate` for History and Profile. Selected quiz types are derived from the saved questions rather than duplicated in another table.
+Save a quiz, its questions, and flattened learner results in one Room transaction. The legacy matching-pairs table remains only for quizzes saved by older builds. A retake updates the same quiz graph, keeps the latest score in `earnedPoints`, and retains the maximum in `highestEarnedPoints`. Index completion time and `completedLocalDate` for History and Profile. Selected quiz types are derived from the saved questions rather than duplicated in another table.
 
 Keep downloaded model packages and retained original learning-material files outside SQLite. Do not store large model or document files in Room. Extracted passages, overlapping search-chunk text, and compact embedding vectors are structured searchable data and may be stored in Room.
 
@@ -526,7 +528,7 @@ Build only these screens:
 ### Hour 4 to 6 — Generate Validated MCQs
 
 - Write the strict prompt.
-- Request each MCQ in its own fresh session with only the passage as the user message.
+- Request each MCQ in its own fresh session with the passage and one copied focus excerpt as the user message.
 - Parse the returned JSON.
 - Apply all validation rules.
 - Retry once after malformed output.
@@ -645,7 +647,7 @@ Do not remove:
 
 - [ ] The learner can select one or more of the five supported quiz types.
 - [ ] Generation requests five questions with the requested type distribution; exhausted slots are skipped, and a partial quiz clearly reports how many failed.
-- [ ] Multiple choice and matching are checked deterministically.
+- [ ] Multiple choice and true or false are checked deterministically.
 - [ ] Fill in the blank, identification, and explanation use the selected passage's top five embedding matches and are evaluated locally against their hidden reference answer.
 - [ ] Local-AI evaluation returns only `true` or `false`, with `false` when unsure.
 - [ ] Invalid boolean output is retried only once and then defaults to `false`.

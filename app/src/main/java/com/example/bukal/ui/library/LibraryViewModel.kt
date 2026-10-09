@@ -88,11 +88,10 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
             }
             runCatching { repository.import(uri) }
                 .onSuccess { result ->
+                    val materials = repository.getAll()
                     mutableUiState.update {
                         it.copy(
-                            materials = listOf(result) + it.materials.filterNot { existing ->
-                                existing.material.id == result.material.id
-                            },
+                            materials = materials,
                             importStatus = ImportStatus.IDLE,
                             importError = null,
                             newlyImportedMaterialId = result.material.id,

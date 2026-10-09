@@ -13,7 +13,7 @@ import org.junit.Test
 class QuizGenerationTest {
     @Test
     fun parsesEachTypeWithoutTypeIndexOrCriteriaFields() {
-        val questions = QuestionType.entries.mapIndexed { index, type ->
+        val questions = currentTypes.mapIndexed { index, type ->
             parseAndValidateQuestion(
                 response = responseFor(type, index + 1),
                 type = type,
@@ -22,11 +22,11 @@ class QuizGenerationTest {
             )
         }
 
-        assertEquals(QuestionType.entries, questions.map(QuizQuestion::type))
+        assertEquals(currentTypes, questions.map(QuizQuestion::type))
         assertEquals(listOf("q1", "q2", "q3", "q4", "q5"), questions.map(QuizQuestion::id))
         assertTrue(questions.all { it.sourceId == passage.sourceId })
         assertEquals(0, (questions[0].answer as QuestionAnswer.MultipleChoice).answerIndex)
-        assertEquals(3, (questions[3].answer as QuestionAnswer.Matching).pairs.size)
+        assertEquals(listOf("True", "False"), (questions[3].answer as QuestionAnswer.MultipleChoice).options)
     }
 
     @Test
@@ -112,6 +112,49 @@ class QuizGenerationTest {
     }
 
     @Test
+    fun mapsFalseBooleanToTheFalseChoice() {
+        val question = parseAndValidateQuestion(
+            response = """{"question":"Is Beta first?","answer":false}""",
+            type = QuestionType.TRUE_FALSE,
+            passage = passage,
+            index = 0,
+        )
+
+        val answer = question.answer as QuestionAnswer.MultipleChoice
+        assertEquals(listOf("True", "False"), answer.options)
+        assertEquals(1, answer.answerIndex)
+    }
+
+    @Test
+    fun rejectsStringInsteadOfBooleanForTrueFalse() {
+        assertThrows(IllegalArgumentException::class.java) {
+            parseAndValidateQuestion(
+                response = """{"question":"Is Alpha first?","answer":"true"}""",
+                type = QuestionType.TRUE_FALSE,
+                passage = passage,
+                index = 0,
+            )
+        }
+    }
+
+    @Test
+    fun rejectsStatementOrOpenEndedTrueFalsePrompt() {
+        listOf(
+            "Alpha is first.",
+            "What is first?",
+        ).forEach { prompt ->
+            assertThrows(IllegalArgumentException::class.java) {
+                parseAndValidateQuestion(
+                    response = """{"question":"$prompt","answer":true}""",
+                    type = QuestionType.TRUE_FALSE,
+                    passage = passage,
+                    index = 0,
+                )
+            }
+        }
+    }
+
+    @Test
     fun acceptsTwoUsableMatchingPairs() {
         val question = parseAndValidateQuestion(
             response =
@@ -126,9 +169,9 @@ class QuizGenerationTest {
 
     @Test
     fun buildsDistinctMinimalPromptForEveryQuestionType() {
-        val instructions = QuestionType.entries.map(::buildGenerationSystemInstruction)
+        val instructions = currentTypes.map(::buildGenerationSystemInstruction)
 
-        assertEquals(QuestionType.entries.size, instructions.toSet().size)
+        assertEquals(currentTypes.size, instructions.toSet().size)
         instructions.forEach { instruction ->
             assertFalse(instruction.contains("\"type\""))
             assertFalse(instruction.contains("answerIndex"))
@@ -139,7 +182,7 @@ class QuizGenerationTest {
 
     @Test
     fun generatesFiveQuestionsInFiveFreshTypeSpecificCalls() = runBlocking {
-        val types = QuestionType.entries
+        val types = currentTypes
         val sentInstructions = mutableListOf<String>()
         val sentRequests = mutableListOf<String>()
         val progress = mutableListOf<Pair<Int, Int>>()
@@ -164,8 +207,89 @@ class QuizGenerationTest {
         assertEquals(0, result.failedQuestionCount)
         assertEquals(5, sentInstructions.size)
         assertEquals((1..5).map { it to 5 }, progress)
-        assertTrue(sentRequests.all { it == passage.content })
+        assertTrue(sentRequests.all { it.contains(passage.content) })
+        assertTrue(sentRequests.all { it.contains("FOCUS EXCERPT FOR THIS QUESTION") })
+        assertEquals(5, sentRequests.map { it.substringAfterLast("copied from the source):\n") }.toSet().size)
         assertTrue(sentInstructions.drop(1).all { it.contains("Do not repeat") })
+    }
+
+    @Test
+    fun focusesNumberedPassagesOnOneItemAtATime() {
+        val passage = """
+            General objective
+
+            1. Predict demand from historical sales.
+            2. Recommend production from available capacity.
+            3. Identify possible ingredient shortages.
+        """.trimIndent()
+
+        val request = buildGenerationRequest(passage, focusIndex = 1)
+
+        assertTrue(request.contains(passage))
+        assertTrue(
+            request.endsWith(
+                "FOCUS EXCERPT FOR THIS QUESTION (copied from the source):\n" +
+                    "2. Recommend production from available capacity.",
+            ),
+        )
+    }
+
+    @Test
+    fun duplicateRetryMovesToAnotherFocusSection() = runBlocking {
+        val requests = mutableListOf<String>()
+        val instructions = mutableListOf<String>()
+        val responses = ArrayDeque(
+            listOf(
+                """{"question":"Identify the first term.","answer":"Alpha"}""",
+                """{"question":"Identify the first term.","answer":"Alpha"}""",
+                """{"question":"Identify the third term.","answer":"Gamma"}""",
+                """{"question":"Identify the fourth term.","answer":"Delta"}""",
+                """{"question":"Identify the fifth term.","answer":"Epsilon"}""",
+                """{"question":"Identify what Beta represents.","answer":"second"}""",
+            ),
+        )
+        val generator = QuizGenerator { _, instruction, request ->
+            instructions += instruction
+            requests += request
+            responses.removeFirst()
+        }
+
+        val result = generator.generate(
+            QuizGenerationRequest(
+                model = quizModel,
+                passage = passage,
+                typeCounts = mapOf(QuestionType.IDENTIFICATION to 5),
+            ),
+        )
+
+        assertEquals(5, result.questions.size)
+        assertTrue(instructions[2].contains("different from the existing questions"))
+        assertTrue(requests[1].endsWith("Beta is second."))
+        assertTrue(requests[2].endsWith("Gamma explains change."))
+    }
+
+    @Test
+    fun missingFieldRetryNamesTheRequiredField() = runBlocking {
+        val instructions = mutableListOf<String>()
+        val responses = ArrayDeque(
+            listOf(
+                """{"question":"Which is first?","options":["Alpha","Beta","Gamma","Delta"]}""",
+            ) + (1..5).map { responseFor(QuestionType.MULTIPLE_CHOICE, it) },
+        )
+        val generator = QuizGenerator { _, instruction, _ ->
+            instructions += instruction
+            responses.removeFirst()
+        }
+
+        generator.generate(
+            QuizGenerationRequest(
+                model = quizModel,
+                passage = passage,
+                typeCounts = mapOf(QuestionType.MULTIPLE_CHOICE to 5),
+            ),
+        )
+
+        assertTrue(instructions[1].contains("Required JSON field 'answer' was missing."))
     }
 
     @Test
@@ -245,6 +369,8 @@ class QuizGenerationTest {
             """{"question":"___ is second in item $number.","answer":"Beta"}"""
         QuestionType.IDENTIFICATION ->
             """{"question":"Identify what is first in item $number.","answer":"Alpha"}"""
+        QuestionType.TRUE_FALSE ->
+            """{"question":"Is Alpha first in item $number?","answer":true}"""
         QuestionType.MATCHING ->
             """{"question":"Match item $number.","pairs":[{"left":"Alpha","right":"First"},{"left":"Beta","right":"Second"},{"left":"Gamma","right":"Change"}]}"""
         QuestionType.EXPLANATION ->
@@ -256,7 +382,9 @@ class QuizGenerationTest {
         materialId = 1,
         sourceId = "TXT-P001",
         position = 0,
-        content = "Alpha is first. Beta is second. Gamma explains change.",
+        content =
+            "Alpha is first. Beta is second. Gamma explains change. " +
+                "Delta is fourth. Epsilon is fifth.",
     )
 
     private val quizModel = ModelDownloadSpec(
@@ -267,5 +395,13 @@ class QuizGenerationTest {
         downloadUrl = "https://example.com/test.litertlm",
         sizeBytes = 1,
         sha256 = "0".repeat(64),
+    )
+
+    private val currentTypes = listOf(
+        QuestionType.MULTIPLE_CHOICE,
+        QuestionType.FILL_IN_THE_BLANK,
+        QuestionType.IDENTIFICATION,
+        QuestionType.TRUE_FALSE,
+        QuestionType.EXPLANATION,
     )
 }

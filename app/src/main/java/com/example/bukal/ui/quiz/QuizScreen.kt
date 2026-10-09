@@ -175,7 +175,9 @@ fun QuizScreen(
                 Spacer(modifier = Modifier.height(10.dp))
             }
             when (state.questionType) {
-                QuestionType.MULTIPLE_CHOICE -> itemsIndexed(state.options) { index, option ->
+                QuestionType.MULTIPLE_CHOICE,
+                QuestionType.TRUE_FALSE,
+                -> itemsIndexed(state.options) { index, option ->
                     AnswerOptionCard(
                         label = option,
                         selected = index == state.selectedOptionIndex,
@@ -213,6 +215,7 @@ private fun questionTypeLabel(type: QuestionType): String = when (type) {
     QuestionType.MULTIPLE_CHOICE -> stringResource(R.string.quiz_type_multiple_choice)
     QuestionType.FILL_IN_THE_BLANK -> stringResource(R.string.quiz_type_fill_blank)
     QuestionType.IDENTIFICATION -> stringResource(R.string.quiz_type_identification)
+    QuestionType.TRUE_FALSE -> stringResource(R.string.quiz_type_true_false)
     QuestionType.MATCHING -> stringResource(R.string.quiz_type_matching)
     QuestionType.EXPLANATION -> stringResource(R.string.quiz_type_explanation)
 }

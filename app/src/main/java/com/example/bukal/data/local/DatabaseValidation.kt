@@ -129,6 +129,7 @@ internal object DatabaseValidation {
 
         when (question.quizType) {
             QuizTypes.MULTIPLE_CHOICE -> validateMultipleChoice(question, record.matchingPairs)
+            QuizTypes.TRUE_FALSE -> validateTrueFalse(question, record.matchingPairs)
             QuizTypes.MATCHING -> validateMatching(question, record.matchingPairs)
             else -> validateAiEvaluated(question, record.matchingPairs)
         }
@@ -188,6 +189,39 @@ internal object DatabaseValidation {
                 "Unanswered question must not contain a response"
             }
             else -> error("AI-evaluated questions support only correct, incorrect, or unanswered results")
+        }
+    }
+
+    private fun validateTrueFalse(
+        question: QuestionEntity,
+        matchingPairs: List<MatchingPairEntity>,
+    ) {
+        val options = listOf(question.option0, question.option1)
+        require(options == listOf("True", "False")) {
+            "True-or-false questions require True and False options"
+        }
+        require(question.option2 == null && question.option3 == null) {
+            "True-or-false questions require exactly two options"
+        }
+        require(question.correctOptionIndex in 0..1) { "True-or-false answer index is invalid" }
+        require(question.selectedOptionIndex == null || question.selectedOptionIndex in 0..1) {
+            "Selected true-or-false option index is invalid"
+        }
+        require(question.referenceAnswer == null && question.gradingCriteria == null) {
+            "True-or-false questions must not store AI grading data"
+        }
+        require(question.textResponse == null && question.aiFeedback == null && question.evaluationEvidence == null) {
+            "True-or-false questions must not store text or AI evaluation data"
+        }
+        require(matchingPairs.isEmpty()) { "True-or-false questions must not contain matching pairs" }
+
+        val expectedResult = when (question.selectedOptionIndex) {
+            null -> QuestionResults.UNANSWERED
+            question.correctOptionIndex -> QuestionResults.CORRECT
+            else -> QuestionResults.INCORRECT
+        }
+        require(question.result == expectedResult) {
+            "True-or-false result does not match the selected option"
         }
     }
 

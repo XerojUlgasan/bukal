@@ -69,7 +69,7 @@ enum class QuizType(
     MULTIPLE_CHOICE(QuestionType.MULTIPLE_CHOICE, R.string.quiz_type_multiple_choice),
     FILL_IN_THE_BLANK(QuestionType.FILL_IN_THE_BLANK, R.string.quiz_type_fill_blank),
     IDENTIFICATION(QuestionType.IDENTIFICATION, R.string.quiz_type_identification),
-    MATCHING(QuestionType.MATCHING, R.string.quiz_type_matching),
+    TRUE_FALSE(QuestionType.TRUE_FALSE, R.string.quiz_type_true_false),
     EXPLANATION(QuestionType.EXPLANATION, R.string.quiz_type_explanation),
 }
 

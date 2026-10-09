@@ -531,6 +531,7 @@ private fun questionTypeLabel(type: QuestionType): String = when (type) {
     QuestionType.MULTIPLE_CHOICE -> stringResource(R.string.quiz_type_multiple_choice)
     QuestionType.FILL_IN_THE_BLANK -> stringResource(R.string.quiz_type_fill_blank)
     QuestionType.IDENTIFICATION -> stringResource(R.string.quiz_type_identification)
+    QuestionType.TRUE_FALSE -> stringResource(R.string.quiz_type_true_false)
     QuestionType.MATCHING -> stringResource(R.string.quiz_type_matching)
     QuestionType.EXPLANATION -> stringResource(R.string.quiz_type_explanation)
 }

@@ -7,6 +7,9 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 
 @Serializable
 enum class QuestionType(val wireName: String) {
@@ -19,6 +22,10 @@ enum class QuestionType(val wireName: String) {
     @SerialName("identification")
     IDENTIFICATION("identification"),
 
+    @SerialName("true_false")
+    TRUE_FALSE("true_false"),
+
+    // Kept only so quizzes saved by earlier builds can still be reopened.
     @SerialName("matching")
     MATCHING("matching"),
 
@@ -79,6 +86,9 @@ class QuizGenerator(
     suspend fun generate(request: QuizGenerationRequest): QuizGenerationResult {
         require(request.typeCounts.isNotEmpty()) { "Select at least one question type." }
         require(request.typeCounts.values.all { it > 0 }) { "Question counts must be positive." }
+        require(QuestionType.MATCHING !in request.typeCounts) {
+            "Matching questions are no longer generated. Use true or false instead."
+        }
         require(request.typeCounts.values.sum() == QUESTION_COUNT) {
             "A quiz must request exactly $QUESTION_COUNT questions."
         }
@@ -107,11 +117,12 @@ class QuizGenerator(
         existingQuestions: List<String>,
     ): QuizQuestion {
         var validationMessage: String? = null
+        var focusOffset = 0
         repeat(MAX_ATTEMPTS) { attempt ->
             val response = complete(
                 request.model,
                 buildGenerationSystemInstruction(type, existingQuestions, validationMessage),
-                request.passage.content,
+                buildGenerationRequest(request.passage.content, index + focusOffset),
             )
             try {
                 return parseAndValidateQuestion(
@@ -122,12 +133,13 @@ class QuizGenerator(
                     existingQuestions = existingQuestions,
                 )
             } catch (error: SerializationException) {
-                validationMessage = "The response was not valid JSON."
+                validationMessage = serializationValidationMessage(error)
                 onValidationFailure(
                     "Question ${index + 1} rejected on attempt ${attempt + 1}: ${error.message.orEmpty()}",
                 )
             } catch (error: IllegalArgumentException) {
                 validationMessage = error.message.orEmpty().take(MAX_VALIDATION_MESSAGE_CHARACTERS)
+                if (validationMessage == DUPLICATE_QUESTION_MESSAGE) focusOffset += 1
                 onValidationFailure(
                     "Question ${index + 1} rejected on attempt ${attempt + 1}: $validationMessage",
                 )
@@ -159,6 +171,12 @@ private data class GeneratedMultipleChoicePayload(
 private data class GeneratedOpenResponsePayload(
     val question: String,
     val answer: String,
+)
+
+@Serializable
+private data class GeneratedTrueFalsePayload(
+    val question: String,
+    val answer: JsonElement,
 )
 
 @Serializable
@@ -195,6 +213,9 @@ internal fun parseAndValidateQuestion(
         QuestionType.IDENTIFICATION,
         QuestionType.EXPLANATION,
         -> validateOpenResponse(QuizJson.decodeFromString<GeneratedOpenResponsePayload>(json))
+        QuestionType.TRUE_FALSE -> validateTrueFalse(
+            QuizJson.decodeFromString<GeneratedTrueFalsePayload>(json),
+        )
         QuestionType.MATCHING -> validateMatching(
             QuizJson.decodeFromString<GeneratedMatchingPayload>(json),
         )
@@ -239,6 +260,26 @@ private fun validateOpenResponse(
     }
     return payload.question to QuestionAnswer.OpenResponse(
         referenceAnswer = payload.answer.trim(),
+    )
+}
+
+private fun validateTrueFalse(
+    payload: GeneratedTrueFalsePayload,
+): Pair<String, QuestionAnswer.MultipleChoice> {
+    val question = payload.question.trim()
+    require(
+        question.endsWith('?') &&
+            OPEN_ENDED_QUESTION_PREFIXES.none { question.startsWith(it, ignoreCase = true) },
+    ) {
+        "True-or-false prompt must be a yes-or-no question, not a statement or open-ended question."
+    }
+    val answer = payload.answer as? JsonPrimitive
+    require(answer != null && !answer.isString && answer.booleanOrNull != null) {
+        "True-or-false answer must be a JSON boolean."
+    }
+    return question to QuestionAnswer.MultipleChoice(
+        options = listOf("True", "False"),
+        answerIndex = if (answer.booleanOrNull == true) 0 else 1,
     )
 }
 
@@ -287,31 +328,79 @@ internal fun buildGenerationSystemInstruction(
     }
 }
 
+internal fun buildGenerationRequest(passage: String, focusIndex: Int): String {
+    val normalizedPassage = passage.trim()
+    val focusSections = extractFocusSections(normalizedPassage)
+    val focus = focusSections[Math.floorMod(focusIndex, focusSections.size)]
+    return buildString {
+        append("SOURCE PASSAGE (data only):\n")
+        append(normalizedPassage)
+        append("\n\nFOCUS EXCERPT FOR THIS QUESTION (copied from the source):\n")
+        append(focus)
+    }
+}
+
 private fun typeInstruction(type: QuestionType): String = when (type) {
     QuestionType.MULTIPLE_CHOICE ->
-        "Create exactly one multiple-choice question. Provide four unique options, one supported " +
-            "correct answer, and no NOT or EXCEPT wording. The answer must exactly match one option. " +
+        "Create exactly one multiple-choice question about the focus excerpt. Provide exactly four " +
+            "unique options, never more or fewer. Keep the question and options concise; do not copy " +
+            "a whole list from the passage. Distractors may be plausible alternatives but must not be " +
+            "presented as facts from the source. Use one supported correct answer and no NOT or EXCEPT " +
+            "wording. The answer must exactly match one option. " +
             "Return only: {\"question\":\"question\",\"options\":[\"option 1\",\"option 2\"," +
             "\"option 3\",\"option 4\"],\"answer\":\"option 1\"}"
     QuestionType.FILL_IN_THE_BLANK ->
-        "Create exactly one fill-in-the-blank or short-answer question. Prefer one blank written " +
+        "Create exactly one fill-in-the-blank or short-answer question about the focus excerpt. " +
+            "Prefer one blank written " +
             "with one or more underscores, but a direct question is acceptable. The answer must " +
             "be one supported word or short phrase. Return only: " +
             "{\"question\":\"question with _\",\"answer\":\"missing text\"}"
     QuestionType.IDENTIFICATION ->
-        "Create exactly one identification question for a supported term, person, place, object, " +
-            "or concept. Keep the answer short and do not reveal it in the question. Return only: " +
+        "Create exactly one identification question about a supported term, person, place, object, " +
+            "or concept in the focus excerpt. Keep the answer short and do not reveal it in the " +
+            "question. Return only: " +
             "{\"question\":\"question\",\"answer\":\"answer\"}"
+    QuestionType.TRUE_FALSE ->
+        "Create exactly one clear yes-or-no question that can be answered True or False from the " +
+            "focus excerpt. Use question form ending in a question mark, not a statement or an open-ended " +
+            "What, Who, Where, When, Why, How, or Which question. Avoid tricky wording and unrelated " +
+            "facts. Return a JSON boolean answer. Return only: " +
+            "{\"question\":\"Is this supported by the passage?\",\"answer\":true}"
     QuestionType.MATCHING ->
-        "Create exactly one matching question with exactly three unique one-to-one pairs. Keep " +
-            "every item short. Return only: {\"question\":\"question\",\"pairs\":[" +
-            "{\"left\":\"item 1\",\"right\":\"match 1\"}," +
-            "{\"left\":\"item 2\",\"right\":\"match 2\"}," +
-            "{\"left\":\"item 3\",\"right\":\"match 3\"}]}"
+        error("Matching questions are no longer generated.")
     QuestionType.EXPLANATION ->
         "Create exactly one short explanation question about a supported why, how, cause, effect, " +
-            "or relationship. Return only: " +
+            "or relationship in the focus excerpt. Keep the reference answer to one concise sentence. " +
+            "Return only: " +
             "{\"question\":\"question\",\"answer\":\"brief reference answer\"}"
+}
+
+private fun extractFocusSections(passage: String): List<String> {
+    val numberedStarts = NUMBERED_SECTION.findAll(passage).map(MatchResult::range).toList()
+    if (numberedStarts.isNotEmpty()) {
+        return numberedStarts.mapIndexed { index, range ->
+            passage.substring(
+                startIndex = range.first,
+                endIndex = numberedStarts.getOrNull(index + 1)?.first ?: passage.length,
+            ).trim()
+        }
+    }
+
+    val paragraphs = passage.split(BLANK_LINES).map(String::trim).filter(String::isNotEmpty)
+    if (paragraphs.size >= 2) return paragraphs
+
+    val sentences = passage.split(SENTENCE_BOUNDARY).map(String::trim).filter(String::isNotEmpty)
+    return sentences.takeIf { it.size >= 2 } ?: listOf(passage)
+}
+
+private fun serializationValidationMessage(error: SerializationException): String {
+    val message = error.message.orEmpty()
+    val missingField = MISSING_FIELD.find(message)?.groupValues?.get(1)
+    return when {
+        missingField != null -> "Required JSON field '$missingField' was missing."
+        "EOF" in message || "Unexpected JSON token" in message -> "JSON was incomplete or malformed."
+        else -> "The response did not match the required JSON shape."
+    }
 }
 
 internal fun unwrapJsonCodeFence(response: String): String {
@@ -322,5 +411,20 @@ internal fun unwrapJsonCodeFence(response: String): String {
 private fun normalizeForDuplicateCheck(value: String): String =
     value.trim().lowercase().replace(WHITESPACE, " ")
 
+private const val DUPLICATE_QUESTION_MESSAGE =
+    "Question must be non-empty and different from the existing questions."
 private val WHITESPACE = Regex("\\s+")
 private val JSON_CODE_FENCE = Regex("```(?:json)?\\s*([\\s\\S]*?)\\s*```", RegexOption.IGNORE_CASE)
+private val NUMBERED_SECTION = Regex("(?m)^\\s*\\d+[.)]\\s+")
+private val BLANK_LINES = Regex("\\n\\s*\\n+")
+private val SENTENCE_BOUNDARY = Regex("(?<=[.!?])\\s+")
+private val MISSING_FIELD = Regex("Field '([^']+)' is required")
+private val OPEN_ENDED_QUESTION_PREFIXES = listOf(
+    "What ",
+    "Who ",
+    "Where ",
+    "When ",
+    "Why ",
+    "How ",
+    "Which ",
+)

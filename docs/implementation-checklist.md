@@ -17,7 +17,7 @@ The complete product scope and technical decisions remain in the [hackathon plan
 ## Current Implementation Status
 
 - A runnable Compose launcher opens the model-setup gate and connects all ten mock reference screens through one Navigation Compose graph.
-- Quiz generation sends only the selected bounded passage text to the selected verified quiz model and returns up to five typed questions. Submission scores multiple choice and matching deterministically. Each answered open item performs a passage-scoped Granite search capped at five matches, then a fresh local quiz-model session returns only `true` or `false`. Results use the real responses and score; a separate top-five-grounded explanation is generated only after the learner taps **Explain**. Attempt persistence remains pending.
+- Quiz generation sends the selected bounded passage plus one focus excerpt copied from it to the selected verified quiz model and returns up to five typed questions. Numbered items are focused individually, with paragraph and sentence fallbacks; duplicate retries advance to another focus while shape retries retain the topic and name the exact problem. Submission scores multiple choice and true or false deterministically. Each answered open item performs a passage-scoped Granite search capped at five matches, then a fresh local quiz-model session returns only `true` or `false`. Results use the real responses and score; a separate top-five-grounded explanation is generated only after the learner taps **Explain**. Attempt persistence remains pending.
 - History and Profile reuse `BukalBottomNavigation`; the focused Generating, Quiz Answering, AI Checking, and Results screens intentionally omit the root footer.
 - Profile reads completed attempts from Room, calculates current and longest streaks across year boundaries, supports year selection, and derives achievement and milestone progress locally. Its horizontally scrollable heatmap uses `0`, `1`, `2`, `3`, and `4+` intensity levels.
 - The five-question distribution is deterministic in selected-type order, and focused unit tests cover empty, single-type, remainder, and all-five-type cases.
@@ -126,6 +126,11 @@ The complete product scope and technical decisions remain in the [hackathon plan
 - [x] No model weights are added to the repository or APK.
 - [ ] One query and one text chunk produce compatible Granite embeddings on the presentation phone.
 
+`GemmaQuizGenerationDeviceTest` now exercises one focused multiple-choice request against the
+installed Gemma 4 E2B artifact. On 2026-10-09 the test APK compiled, but the connected Xiaomi phone
+blocked its installation with `INSTALL_FAILED_USER_RESTRICTED`, so structured-output verification
+did not run and remains unchecked.
+
 ## Task 5 — Implement Model Download and Management
 
 ### Implementation
@@ -193,7 +198,7 @@ The focused `GraniteEmbeddingIndexerDeviceTest` passed on 2026-10-09 with one ch
 - [x] Display mock bounded passage previews with their source IDs.
 - [x] Let the learner select exactly one passage in the mock UI.
 - [x] Keep the material name visible and provide a sticky continue action after a valid passage is selected.
-- [x] Add mock quiz setup with selectable multiple choice, fill in the blank, identification, matching, and explanation types.
+- [x] Add mock quiz setup with selectable multiple choice, fill in the blank, identification, true or false, and explanation types.
 - [x] Require at least one selected quiz type before enabling the mock Generate action.
 - [x] Show that Bukal will request five questions and may continue with fewer when individual slots exhaust their retries.
 - [x] Explain that identification and explanation are evaluated locally by AI.
@@ -216,7 +221,7 @@ The focused `GraniteEmbeddingIndexerDeviceTest` passed on 2026-10-09 with one ch
 ### Implementation
 
 - [x] Add minimal type-specific model-output contracts without a returned type; assign types, question IDs, and source linkage locally.
-- [x] Add type-specific models for multiple choice, fill in the blank, identification, matching, and explanation.
+- [x] Add type-specific models for multiple choice, fill in the blank, identification, true or false, and explanation.
 - [x] Parse model output with `kotlinx.serialization`.
 - [x] Remove at most one outer plain or `json` Markdown code fence before otherwise strict JSON parsing.
 - [x] Validate non-empty, unique question text while preserving the requested type distribution.
@@ -224,18 +229,18 @@ The focused `GraniteEmbeddingIndexerDeviceTest` passed on 2026-10-09 with one ch
 - [x] Discourage negative multiple-choice wording without rejecting otherwise usable output.
 - [x] Accept fill-in-the-blank questions with any underscore length or a direct question when the hidden reference answer is present.
 - [x] Validate hidden reference answers for identification and explanation.
-- [x] Request three matching pairs while accepting at least two unique left/right items with a complete stable-ID mapping.
+- [x] Require a yes-or-no question plus a JSON boolean answer for true or false, rejecting statement and open-ended prompt forms.
 - [x] Define typed learner-response and completed result/evaluation models.
 - [x] Return useful validation errors without inventing missing fields.
-- [x] Add deterministic scoring for multiple choice and matching.
+- [x] Add deterministic scoring for multiple choice and true or false.
 
 ### Acceptance and Verification
 
 - [x] Unit tests accept one complete valid question of every type.
 - [x] Unit tests reject malformed JSON and invalid common or type-specific fields.
-- [x] Unit tests cover one outer JSON fence, passage-only user input, local ID/source assignment, relaxed blanks, harmless extra fields, and negative multiple-choice wording.
+- [x] Unit tests cover one outer JSON fence, source-only focused user input, local ID/source assignment, relaxed blanks, harmless extra fields, and negative multiple-choice wording.
 - [x] Fill-in-the-blank validation rejects missing reference answers.
-- [ ] Matching tests cover complete, incorrect, duplicate, and incomplete mappings.
+- [x] True-or-false tests cover generation, deterministic choices, persistence validation, and scoring without AI.
 - [x] Deterministic scoring tests cover correct, incorrect, unanswered, and complete responses.
 - [x] These tests run without loading an AI model.
 
@@ -245,7 +250,9 @@ The focused `GraniteEmbeddingIndexerDeviceTest` passed on 2026-10-09 with one ch
 
 - [x] Define one compact JSON-only generation system instruction for each quiz type.
 - [x] Build each instruction with only its minimal type-specific schema and prior questions to avoid.
-- [x] Send only the selected bounded passage text as the user message.
+- [x] Send only source material as the user message: the selected bounded passage plus one focus excerpt copied from it.
+- [x] Focus numbered items individually, fall back to paragraphs or sentences, and advance focus when a retry was rejected as a duplicate.
+- [x] Keep malformed-shape retries on the same focus and provide a concise, specific validation problem such as a missing field.
 - [x] Request each of the five questions in its own fresh, unsaved model session.
 - [x] Keep no conversation history.
 - [x] Initialize the selected verified quiz model without blocking the interface.
@@ -280,7 +287,7 @@ The focused `GraniteEmbeddingIndexerDeviceTest` passed on 2026-10-09 with one ch
 - [x] Show four selectable options for the mock multiple-choice question.
 - [x] Show a short text field for fill in the blank.
 - [x] Show a short free-text field for identification.
-- [x] Show accessible pair-selection controls for matching.
+- [x] Show accessible True and False selection controls.
 - [x] Show a multi-line text field for explanation.
 - [x] Add mock previous and next controls.
 - [x] Keep primary navigation controls reachable with touch targets of at least 48 dp.
@@ -295,7 +302,7 @@ The focused `GraniteEmbeddingIndexerDeviceTest` passed on 2026-10-09 with one ch
 
 - [ ] The learner can enter and edit a valid response for every supported type.
 - [ ] Navigation preserves selected answers.
-- [x] Multiple choice and matching receive the expected deterministic result.
+- [x] Multiple choice and true or false receive the expected deterministic result.
 - [x] Deterministic answer checking does not initialize the model.
 - [ ] Each quiz type can receive a short hint without revealing its answer, and hints do not appear in History.
 - [ ] Screen-state tests or focused manual checks cover rotation or activity recreation where practical.
@@ -351,13 +358,13 @@ The focused `GraniteEmbeddingIndexerDeviceTest` passed on 2026-10-09 with one ch
 ### Implementation
 
 - [x] Implement the entities and relationships from the reviewed [SQLite schema](sqlite-schema.md); keep its reference DDL synchronized with intentional schema changes.
-- [x] Define only the six reviewed Room entities: materials, passages, search chunks, attempts, questions, and matching pairs.
+- [x] Keep the six reviewed Room entities; retain matching pairs only for quizzes saved by older builds.
 - [x] Define explicit primary keys, foreign keys, cascade behavior, and indexes.
 - [x] Index generation timestamps for History and completion timestamps/local dates for completed-only Profile queries.
 - [x] Add DAOs for saving and reading materials, attempts, full results, and daily activity counts.
 - [x] Save each generated quiz or completed attempt and all child records in one validated Room transaction.
 - [x] Store the quiz model ID, completion timestamp/local date, question types, source IDs, learner responses, verdicts, and points; derive selected types from question rows.
-- [x] Load typed question and matching-pair relationships safely and expose refreshed Room-backed history.
+- [x] Load current typed questions and legacy matching-pair relationships safely and expose refreshed Room-backed history.
 - [x] Add a simple history screen showing saved and completed quizzes; selecting either starts a fresh retake.
 - [x] Reuse the existing generated quiz for a passage instead of running local AI again.
 - [x] Update the same quiz graph on retake and show its latest previous score plus retained highest score without adding another History item.
@@ -366,7 +373,7 @@ The focused `GraniteEmbeddingIndexerDeviceTest` passed on 2026-10-09 with one ch
 - [x] Export Room schema version 3; retain the version 1 to 2 migration and add version 2 to 3 for highest score.
 - [ ] Add focused in-memory Room tests for DAOs, relationships, transactions, and cascade behavior.
 
-The Room database and 1-to-2 migration tests passed on the connected Xiaomi device before the draft-to-completed replacement assertion was added. The strengthened suite compiles; its rerun was blocked when the phone rejected test-APK installation with `INSTALL_FAILED_USER_RESTRICTED`.
+On 2026-10-09, the focused Room database and migration suites passed all four tests on the connected Xiaomi device, covering the version 2 to 3 highest-score migration, saved-to-completed in-place update, retake replacement without a new row, highest-score retention, relationships, activity queries, and cascades. Two final assertions for existing passage-quiz lookup compile, but their rerun was blocked when the phone canceled the test-APK install with `INSTALL_FAILED_USER_RESTRICTED`.
 
 ### Acceptance and Verification
 

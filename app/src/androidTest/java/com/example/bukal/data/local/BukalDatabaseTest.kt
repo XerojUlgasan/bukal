@@ -8,7 +8,6 @@ import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -188,6 +187,7 @@ class BukalDatabaseTest {
         val savedQuiz = requireNotNull(database.attemptDao().getSavedQuiz(savedQuizId))
         assertEquals(AttemptStatuses.SAVED, savedQuiz.attempt.status)
         assertEquals(QuestionResults.UNANSWERED, savedQuiz.questions.single().question.result)
+        assertEquals(savedQuizId, database.attemptDao().getQuizForPassage(passage.id)?.attempt?.id)
 
         val completedSavedQuizId = database.attemptDao().replaceQuizWithCompleted(
             quizId = savedQuizId,
@@ -224,6 +224,7 @@ class BukalDatabaseTest {
             ),
         )
         assertEquals(completedSavedQuizId, retakenQuizId)
+        assertEquals(retakenQuizId, database.attemptDao().getQuizForPassage(passage.id)?.attempt?.id)
         assertEquals(2, database.attemptDao().getHistory().size)
         assertEquals(0.0, database.attemptDao().getAttempt(retakenQuizId)?.earnedPoints ?: -1.0, 0.0)
         assertEquals(1.0, database.attemptDao().getAttempt(retakenQuizId)?.highestEarnedPoints ?: -1.0, 0.0)

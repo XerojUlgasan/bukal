@@ -67,6 +67,8 @@
     <string name="quiz_type_multiple_choice">Multiple choice</string>
     <string name="quiz_type_fill_blank">Fill in the blank</string>
     <string name="quiz_type_identification">Identification</string>
+    <string name="quiz_type_true_false">True or false</string>
+    <!-- Retained only for quizzes saved by earlier builds. -->
     <string name="quiz_type_matching">Matching</string>
     <string name="quiz_type_explanation">Explanation</string>
     <string name="quiz_mix_title">Question mix</string>

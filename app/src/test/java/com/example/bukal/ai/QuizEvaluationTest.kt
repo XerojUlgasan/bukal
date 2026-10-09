@@ -21,11 +21,7 @@ class QuizEvaluationTest {
         val summary = evaluator.evaluate(
             evaluationRequest(
                 questions = questions.take(3),
-                selectedOptions = mapOf("q1" to 0, "q2" to 1),
-                matchingSelections = mapOf(
-                    "q3:left-1" to "right-1",
-                    "q3:left-2" to "right-2",
-                ),
+                selectedOptions = mapOf("q1" to 0, "q2" to 1, "q3" to 0),
             ),
         )
 
@@ -170,11 +166,7 @@ class QuizEvaluationTest {
         val summary = evaluator.evaluate(
             evaluationRequest(
                 questions = questions.take(3),
-                selectedOptions = mapOf("q1" to 0),
-                matchingSelections = mapOf(
-                    "q3:left-1" to "right-1",
-                    "q3:left-2" to "right-2",
-                ),
+                selectedOptions = mapOf("q1" to 0, "q3" to 0),
             ),
         )
 
@@ -248,14 +240,12 @@ class QuizEvaluationTest {
         ),
         QuizQuestion(
             id = "q3",
-            type = QuestionType.MATCHING,
-            prompt = "Match the items.",
+            type = QuestionType.TRUE_FALSE,
+            prompt = "Is Alpha first?",
             sourceId = passage.sourceId,
-            answer = QuestionAnswer.Matching(
-                pairs = listOf(
-                    MatchingPair("left-1", "Alpha", "right-1", "First"),
-                    MatchingPair("left-2", "Beta", "right-2", "Second"),
-                ),
+            answer = QuestionAnswer.MultipleChoice(
+                options = listOf("True", "False"),
+                answerIndex = 0,
             ),
         ),
         QuizQuestion(

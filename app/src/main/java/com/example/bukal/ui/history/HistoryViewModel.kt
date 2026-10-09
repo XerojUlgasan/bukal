@@ -100,6 +100,7 @@ private fun String.toDisplayName(): String = when (this) {
     "multiple_choice" -> "Multiple choice"
     "fill_in_the_blank" -> "Fill in the blank"
     "identification" -> "Identification"
+    "true_false" -> "True or false"
     "matching" -> "Matching"
     "explanation" -> "Explanation"
     else -> replace('_', ' ')
