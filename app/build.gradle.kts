@@ -59,6 +59,7 @@ dependencies {
     implementation(libs.pdfbox.android)
     implementation(libs.litertlm.android)
     implementation(libs.kotlinx.serialization.json)
+    implementation(libs.markwon.core)
     ksp(libs.androidx.room.compiler)
     debugImplementation(libs.androidx.compose.ui.tooling)
     testImplementation(libs.junit)

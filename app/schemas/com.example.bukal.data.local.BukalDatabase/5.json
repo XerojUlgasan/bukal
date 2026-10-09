@@ -1,0 +1,868 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 5,
+    "identityHash": "44910c90021950f5e94448982e1ba8e0",
+    "entities": [
+      {
+        "tableName": "materials",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `display_name` TEXT NOT NULL, `document_format` TEXT NOT NULL, `mime_type` TEXT, `retained_file_path` TEXT, `imported_at_epoch_ms` INTEGER NOT NULL, `summary_markdown` TEXT, `summary_model_id` TEXT, `summarized_at_epoch_ms` INTEGER)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "displayName",
+            "columnName": "display_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "documentFormat",
+            "columnName": "document_format",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mimeType",
+            "columnName": "mime_type",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "retainedFilePath",
+            "columnName": "retained_file_path",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "importedAtEpochMs",
+            "columnName": "imported_at_epoch_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "summaryMarkdown",
+            "columnName": "summary_markdown",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "summaryModelId",
+            "columnName": "summary_model_id",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "summarizedAtEpochMs",
+            "columnName": "summarized_at_epoch_ms",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "idx_materials_imported_at",
+            "unique": false,
+            "columnNames": [
+              "imported_at_epoch_ms"
+            ],
+            "orders": [
+              "DESC"
+            ],
+            "createSql": "CREATE INDEX IF NOT EXISTS `idx_materials_imported_at` ON `${TABLE_NAME}` (`imported_at_epoch_ms` DESC)"
+          }
+        ]
+      },
+      {
+        "tableName": "passages",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `material_id` INTEGER NOT NULL, `source_id` TEXT NOT NULL, `position` INTEGER NOT NULL, `title` TEXT, `content` TEXT NOT NULL, FOREIGN KEY(`material_id`) REFERENCES `materials`(`id`) ON UPDATE RESTRICT ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "materialId",
+            "columnName": "material_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceId",
+            "columnName": "source_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "position",
+            "columnName": "position",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "content",
+            "columnName": "content",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_passages_material_id_source_id",
+            "unique": true,
+            "columnNames": [
+              "material_id",
+              "source_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_passages_material_id_source_id` ON `${TABLE_NAME}` (`material_id`, `source_id`)"
+          },
+          {
+            "name": "index_passages_material_id_position",
+            "unique": true,
+            "columnNames": [
+              "material_id",
+              "position"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_passages_material_id_position` ON `${TABLE_NAME}` (`material_id`, `position`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "materials",
+            "onDelete": "CASCADE",
+            "onUpdate": "RESTRICT",
+            "columns": [
+              "material_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "search_chunks",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `passage_id` INTEGER NOT NULL, `chunk_index` INTEGER NOT NULL, `start_offset` INTEGER NOT NULL, `end_offset` INTEGER NOT NULL, `content` TEXT NOT NULL, `embedding_model_id` TEXT, `embedding_dimensions` INTEGER, `embedding_vector` BLOB, FOREIGN KEY(`passage_id`) REFERENCES `passages`(`id`) ON UPDATE RESTRICT ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "passageId",
+            "columnName": "passage_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "chunkIndex",
+            "columnName": "chunk_index",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startOffset",
+            "columnName": "start_offset",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "endOffset",
+            "columnName": "end_offset",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "content",
+            "columnName": "content",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "embeddingModelId",
+            "columnName": "embedding_model_id",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "embeddingDimensions",
+            "columnName": "embedding_dimensions",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "embeddingVector",
+            "columnName": "embedding_vector",
+            "affinity": "BLOB"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_search_chunks_passage_id_chunk_index",
+            "unique": true,
+            "columnNames": [
+              "passage_id",
+              "chunk_index"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_search_chunks_passage_id_chunk_index` ON `${TABLE_NAME}` (`passage_id`, `chunk_index`)"
+          },
+          {
+            "name": "idx_search_chunks_embedding_model",
+            "unique": false,
+            "columnNames": [
+              "embedding_model_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `idx_search_chunks_embedding_model` ON `${TABLE_NAME}` (`embedding_model_id`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "passages",
+            "onDelete": "CASCADE",
+            "onUpdate": "RESTRICT",
+            "columns": [
+              "passage_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "attempts",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `passage_id` INTEGER NOT NULL, `quiz_model_id` TEXT NOT NULL, `generated_at_epoch_ms` INTEGER NOT NULL DEFAULT 0, `status` TEXT NOT NULL DEFAULT 'completed', `completed_at_epoch_ms` INTEGER NOT NULL, `completed_local_date` TEXT NOT NULL, `earned_points` REAL NOT NULL, `highest_earned_points` REAL NOT NULL DEFAULT 0, `possible_points` REAL NOT NULL, FOREIGN KEY(`passage_id`) REFERENCES `passages`(`id`) ON UPDATE RESTRICT ON DELETE RESTRICT )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "passageId",
+            "columnName": "passage_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "quizModelId",
+            "columnName": "quiz_model_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "generatedAtEpochMs",
+            "columnName": "generated_at_epoch_ms",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "'completed'"
+          },
+          {
+            "fieldPath": "completedAtEpochMs",
+            "columnName": "completed_at_epoch_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "completedLocalDate",
+            "columnName": "completed_local_date",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "earnedPoints",
+            "columnName": "earned_points",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "highestEarnedPoints",
+            "columnName": "highest_earned_points",
+            "affinity": "REAL",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "possiblePoints",
+            "columnName": "possible_points",
+            "affinity": "REAL",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "idx_attempts_completed_at",
+            "unique": false,
+            "columnNames": [
+              "completed_at_epoch_ms"
+            ],
+            "orders": [
+              "DESC"
+            ],
+            "createSql": "CREATE INDEX IF NOT EXISTS `idx_attempts_completed_at` ON `${TABLE_NAME}` (`completed_at_epoch_ms` DESC)"
+          },
+          {
+            "name": "idx_attempts_generated_at",
+            "unique": false,
+            "columnNames": [
+              "generated_at_epoch_ms"
+            ],
+            "orders": [
+              "DESC"
+            ],
+            "createSql": "CREATE INDEX IF NOT EXISTS `idx_attempts_generated_at` ON `${TABLE_NAME}` (`generated_at_epoch_ms` DESC)"
+          },
+          {
+            "name": "idx_attempts_completed_local_date",
+            "unique": false,
+            "columnNames": [
+              "completed_local_date"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `idx_attempts_completed_local_date` ON `${TABLE_NAME}` (`completed_local_date`)"
+          },
+          {
+            "name": "idx_attempts_passage_id",
+            "unique": false,
+            "columnNames": [
+              "passage_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `idx_attempts_passage_id` ON `${TABLE_NAME}` (`passage_id`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "passages",
+            "onDelete": "RESTRICT",
+            "onUpdate": "RESTRICT",
+            "columns": [
+              "passage_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "quiz_sets",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `selection_key` TEXT NOT NULL, `created_at_epoch_ms` INTEGER NOT NULL, `status` TEXT NOT NULL DEFAULT 'saved', `completed_at_epoch_ms` INTEGER NOT NULL, `completed_local_date` TEXT NOT NULL, `earned_points` REAL NOT NULL, `highest_earned_points` REAL NOT NULL DEFAULT 0, `possible_points` REAL NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "selectionKey",
+            "columnName": "selection_key",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAtEpochMs",
+            "columnName": "created_at_epoch_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "'saved'"
+          },
+          {
+            "fieldPath": "completedAtEpochMs",
+            "columnName": "completed_at_epoch_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "completedLocalDate",
+            "columnName": "completed_local_date",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "earnedPoints",
+            "columnName": "earned_points",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "highestEarnedPoints",
+            "columnName": "highest_earned_points",
+            "affinity": "REAL",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "possiblePoints",
+            "columnName": "possible_points",
+            "affinity": "REAL",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_quiz_sets_selection_key",
+            "unique": true,
+            "columnNames": [
+              "selection_key"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_quiz_sets_selection_key` ON `${TABLE_NAME}` (`selection_key`)"
+          },
+          {
+            "name": "idx_quiz_sets_created_at",
+            "unique": false,
+            "columnNames": [
+              "created_at_epoch_ms"
+            ],
+            "orders": [
+              "DESC"
+            ],
+            "createSql": "CREATE INDEX IF NOT EXISTS `idx_quiz_sets_created_at` ON `${TABLE_NAME}` (`created_at_epoch_ms` DESC)"
+          },
+          {
+            "name": "idx_quiz_sets_completed_at",
+            "unique": false,
+            "columnNames": [
+              "completed_at_epoch_ms"
+            ],
+            "orders": [
+              "DESC"
+            ],
+            "createSql": "CREATE INDEX IF NOT EXISTS `idx_quiz_sets_completed_at` ON `${TABLE_NAME}` (`completed_at_epoch_ms` DESC)"
+          },
+          {
+            "name": "idx_quiz_sets_completed_local_date",
+            "unique": false,
+            "columnNames": [
+              "completed_local_date"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `idx_quiz_sets_completed_local_date` ON `${TABLE_NAME}` (`completed_local_date`)"
+          }
+        ]
+      },
+      {
+        "tableName": "quiz_set_items",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`quiz_set_id` INTEGER NOT NULL, `attempt_id` INTEGER NOT NULL, `position` INTEGER NOT NULL, PRIMARY KEY(`quiz_set_id`, `attempt_id`), FOREIGN KEY(`quiz_set_id`) REFERENCES `quiz_sets`(`id`) ON UPDATE RESTRICT ON DELETE CASCADE , FOREIGN KEY(`attempt_id`) REFERENCES `attempts`(`id`) ON UPDATE RESTRICT ON DELETE RESTRICT )",
+        "fields": [
+          {
+            "fieldPath": "quizSetId",
+            "columnName": "quiz_set_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "attemptId",
+            "columnName": "attempt_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "position",
+            "columnName": "position",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "quiz_set_id",
+            "attempt_id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_quiz_set_items_quiz_set_id_position",
+            "unique": true,
+            "columnNames": [
+              "quiz_set_id",
+              "position"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_quiz_set_items_quiz_set_id_position` ON `${TABLE_NAME}` (`quiz_set_id`, `position`)"
+          },
+          {
+            "name": "index_quiz_set_items_attempt_id",
+            "unique": false,
+            "columnNames": [
+              "attempt_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_quiz_set_items_attempt_id` ON `${TABLE_NAME}` (`attempt_id`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "quiz_sets",
+            "onDelete": "CASCADE",
+            "onUpdate": "RESTRICT",
+            "columns": [
+              "quiz_set_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "attempts",
+            "onDelete": "RESTRICT",
+            "onUpdate": "RESTRICT",
+            "columns": [
+              "attempt_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "questions",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `attempt_id` INTEGER NOT NULL, `position` INTEGER NOT NULL, `quiz_type` TEXT NOT NULL, `prompt` TEXT NOT NULL, `explanation` TEXT NOT NULL, `source_id` TEXT NOT NULL, `evidence` TEXT NOT NULL, `option_0` TEXT, `option_1` TEXT, `option_2` TEXT, `option_3` TEXT, `correct_option_index` INTEGER, `reference_answer` TEXT, `grading_criteria` TEXT, `selected_option_index` INTEGER, `text_response` TEXT, `result` TEXT NOT NULL, `ai_feedback` TEXT, `evaluation_evidence` TEXT, `earned_points` REAL NOT NULL, `possible_points` REAL NOT NULL, FOREIGN KEY(`attempt_id`) REFERENCES `attempts`(`id`) ON UPDATE RESTRICT ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "attemptId",
+            "columnName": "attempt_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "position",
+            "columnName": "position",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "quizType",
+            "columnName": "quiz_type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "prompt",
+            "columnName": "prompt",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "explanation",
+            "columnName": "explanation",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceId",
+            "columnName": "source_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "evidence",
+            "columnName": "evidence",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "option0",
+            "columnName": "option_0",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "option1",
+            "columnName": "option_1",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "option2",
+            "columnName": "option_2",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "option3",
+            "columnName": "option_3",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "correctOptionIndex",
+            "columnName": "correct_option_index",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "referenceAnswer",
+            "columnName": "reference_answer",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "gradingCriteria",
+            "columnName": "grading_criteria",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "selectedOptionIndex",
+            "columnName": "selected_option_index",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "textResponse",
+            "columnName": "text_response",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "result",
+            "columnName": "result",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "aiFeedback",
+            "columnName": "ai_feedback",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "evaluationEvidence",
+            "columnName": "evaluation_evidence",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "earnedPoints",
+            "columnName": "earned_points",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "possiblePoints",
+            "columnName": "possible_points",
+            "affinity": "REAL",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_questions_attempt_id_position",
+            "unique": true,
+            "columnNames": [
+              "attempt_id",
+              "position"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_questions_attempt_id_position` ON `${TABLE_NAME}` (`attempt_id`, `position`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "attempts",
+            "onDelete": "CASCADE",
+            "onUpdate": "RESTRICT",
+            "columns": [
+              "attempt_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "matching_pairs",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`question_id` INTEGER NOT NULL, `left_id` TEXT NOT NULL, `left_text` TEXT NOT NULL, `left_position` INTEGER NOT NULL, `right_id` TEXT NOT NULL, `right_text` TEXT NOT NULL, `right_position` INTEGER NOT NULL, `selected_right_id` TEXT, PRIMARY KEY(`question_id`, `left_id`), FOREIGN KEY(`question_id`) REFERENCES `questions`(`id`) ON UPDATE RESTRICT ON DELETE CASCADE , FOREIGN KEY(`question_id`, `selected_right_id`) REFERENCES `matching_pairs`(`question_id`, `right_id`) ON UPDATE RESTRICT ON DELETE SET NULL )",
+        "fields": [
+          {
+            "fieldPath": "questionId",
+            "columnName": "question_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "leftId",
+            "columnName": "left_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "leftText",
+            "columnName": "left_text",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "leftPosition",
+            "columnName": "left_position",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rightId",
+            "columnName": "right_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rightText",
+            "columnName": "right_text",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rightPosition",
+            "columnName": "right_position",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "selectedRightId",
+            "columnName": "selected_right_id",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "question_id",
+            "left_id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_matching_pairs_question_id_right_id",
+            "unique": true,
+            "columnNames": [
+              "question_id",
+              "right_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_matching_pairs_question_id_right_id` ON `${TABLE_NAME}` (`question_id`, `right_id`)"
+          },
+          {
+            "name": "index_matching_pairs_question_id_left_position",
+            "unique": true,
+            "columnNames": [
+              "question_id",
+              "left_position"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_matching_pairs_question_id_left_position` ON `${TABLE_NAME}` (`question_id`, `left_position`)"
+          },
+          {
+            "name": "index_matching_pairs_question_id_right_position",
+            "unique": true,
+            "columnNames": [
+              "question_id",
+              "right_position"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_matching_pairs_question_id_right_position` ON `${TABLE_NAME}` (`question_id`, `right_position`)"
+          },
+          {
+            "name": "index_matching_pairs_question_id_selected_right_id",
+            "unique": false,
+            "columnNames": [
+              "question_id",
+              "selected_right_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_matching_pairs_question_id_selected_right_id` ON `${TABLE_NAME}` (`question_id`, `selected_right_id`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "questions",
+            "onDelete": "CASCADE",
+            "onUpdate": "RESTRICT",
+            "columns": [
+              "question_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "matching_pairs",
+            "onDelete": "SET NULL",
+            "onUpdate": "RESTRICT",
+            "columns": [
+              "question_id",
+              "selected_right_id"
+            ],
+            "referencedColumns": [
+              "question_id",
+              "right_id"
+            ]
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '44910c90021950f5e94448982e1ba8e0')"
+    ]
+  }
+}

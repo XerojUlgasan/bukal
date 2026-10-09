@@ -1,7 +1,7 @@
 package com.example.bukal.ui.history
 
-import com.example.bukal.data.local.AttemptHistoryRow
 import com.example.bukal.data.local.AttemptStatuses
+import com.example.bukal.data.local.QuizSetHistoryRow
 import java.time.LocalDate
 import java.time.ZoneId
 import org.junit.Assert.assertEquals
@@ -23,7 +23,26 @@ class HistoryViewModelTest {
         assertEquals("Saved Today • 10:00 AM", state.thisWeek[0].completedAtLabel)
         assertEquals("Previous 4 / 5", state.thisWeek[1].scoreLabel)
         assertEquals("Highest 4 / 5", state.thisWeek[1].highestScoreLabel)
-        assertEquals("Multiple choice • Identification", state.thisWeek[0].typeSummary)
+        assertEquals("5 questions • Multiple choice • Identification", state.thisWeek[0].typeSummary)
+    }
+
+    @Test
+    fun multiplePassagesRenderAsOneHistoryObject() {
+        val row = historyRow(
+            id = 1,
+            status = AttemptStatuses.COMPLETED,
+            dateTime = "2026-10-09T10:00:00+08:00[Asia/Manila]",
+            earned = 12.0,
+        ).copy(passageTitle = null, passageCount = 3, possiblePoints = 15.0, questionCount = 15)
+
+        val item = listOf(row).toHistoryUiState(
+            now = LocalDate.of(2026, 10, 9),
+            zoneId = ZoneId.of("Asia/Manila"),
+        ).thisWeek.single()
+
+        assertEquals("3 passages", item.passageTitle)
+        assertEquals("Previous 12 / 15", item.scoreLabel)
+        assertEquals("15 questions • Multiple choice • Identification", item.typeSummary)
     }
 
     private fun historyRow(
@@ -31,15 +50,14 @@ class HistoryViewModelTest {
         status: String,
         dateTime: String,
         earned: Double,
-    ): AttemptHistoryRow {
+    ): QuizSetHistoryRow {
         val epoch = java.time.ZonedDateTime.parse(dateTime).toInstant().toEpochMilli()
-        return AttemptHistoryRow(
-            attemptId = id,
+        return QuizSetHistoryRow(
+            quizSetId = id,
             materialName = "Lesson",
             passageTitle = "Passage",
-            sourceId = "TXT-P001",
-            quizModelId = "model",
-            generatedAtEpochMs = epoch,
+            passageCount = 1,
+            createdAtEpochMs = epoch,
             status = status,
             completedAtEpochMs = epoch,
             completedLocalDate = "2026-10-09",

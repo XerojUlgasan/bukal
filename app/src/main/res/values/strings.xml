@@ -33,7 +33,7 @@
     <string name="model_doodle_description">Model downloads to this phone</string>
     <string name="home_model_ready">Model ready</string>
     <string name="home_title">Ready to study?</string>
-    <string name="home_subtitle">Turn a lesson into a five-question quiz.</string>
+    <string name="home_subtitle">Turn lesson passages into local quizzes.</string>
     <string name="home_import_title">Import a lesson</string>
     <string name="home_import_subtitle">Choose a TXT, text-based PDF, DOCX, or PPTX file.</string>
     <string name="home_import_action">Choose lesson file</string>
@@ -50,20 +50,54 @@
     <string name="nav_home">Home</string>
     <string name="nav_history">History</string>
     <string name="nav_profile">Profile</string>
-    <string name="home_start_streak">Complete a quiz to start a streak</string>
-    <plurals name="home_study_streak">
-        <item quantity="one">%1$d-day study streak</item>
-        <item quantity="other">%1$d-day study streak</item>
+    <plurals name="home_pet_progress_no_streak">
+        <item quantity="one">%1$d/%2$d correct today • Earn your streak pet</item>
+        <item quantity="other">%1$d/%2$d correct today • Earn your streak pet</item>
     </plurals>
-    <string name="passage_title">Choose a passage</string>
+    <plurals name="home_pet_streak_progress">
+        <item quantity="one">%1$d-day streak • %2$d/%3$d correct today</item>
+        <item quantity="other">%1$d-day streak • %2$d/%3$d correct today</item>
+    </plurals>
+    <string name="passage_title">Choose passages</string>
     <string name="passage_back_description">Back to Home</string>
     <string name="passage_count">%1$d passages</string>
-    <string name="passage_instruction">Pick one passage for your quiz.</string>
-    <string name="passage_continue_action">Continue</string>
+    <string name="passage_instruction">Choose up to 5 passages. Each passage contributes up to 5 questions.</string>
+    <plurals name="passage_saved_questions">
+        <item quantity="one">%1$d saved question available</item>
+        <item quantity="other">%1$d saved questions available</item>
+    </plurals>
+    <plurals name="passage_continue_action">
+        <item quantity="one">Continue • %1$d passage • up to %2$d questions</item>
+        <item quantity="other">Continue • %1$d passages • up to %2$d questions</item>
+    </plurals>
+    <string name="flashcards_button">Flashcards</string>
+    <string name="flashcards_title">Flashcards</string>
+    <string name="flashcards_back_description">Back to passage selection</string>
+    <string name="flashcards_position">Card %1$d of %2$d</string>
+    <string name="flashcards_question_label">Question</string>
+    <string name="flashcards_answer_label">Answer</string>
+    <string name="flashcards_reveal_hint">Tap to reveal answer</string>
+    <string name="flashcards_hide_hint">Tap to see question</string>
+    <string name="flashcards_empty_title">No flashcards yet</string>
+    <string name="flashcards_empty_subtitle">Generate a quiz from this lesson first. Saved questions become flashcards here.</string>
+    <string name="summary_open_action">File summary</string>
+    <string name="summary_title">File summary</string>
+    <string name="summary_back_description">Back to passage selection</string>
+    <string name="summary_loading">Checking for a saved summary…</string>
+    <string name="summary_progress">Summarizing passage %1$d of %2$d…</string>
+    <string name="summary_once_note">Bukal creates and saves this summary only once.</string>
+    <string name="summary_error_title">Summary not created</string>
+    <string name="summary_retry_action">Try again</string>
+    <string name="summary_source_note">AI-generated locally. Use the source IDs to check important details in the original lesson.</string>
     <string name="quiz_setup_title">Set up your quiz</string>
     <string name="quiz_setup_back_description">Back to passage selection</string>
     <string name="quiz_setup_types_title">Choose question types</string>
-    <string name="quiz_setup_types_subtitle">Select one or more. Your quiz will have 5 questions.</string>
+    <plurals name="quiz_setup_selected_passages">
+        <item quantity="one">%1$d passage selected</item>
+        <item quantity="other">%1$d passages selected</item>
+    </plurals>
+    <string name="quiz_setup_cache_summary">%1$d passages have saved questions • %2$d have none</string>
+    <string name="quiz_setup_types_subtitle">Selected types shape every passage. Up to %1$d questions total.</string>
     <string name="quiz_type_multiple_choice">Multiple choice</string>
     <string name="quiz_type_fill_blank">Fill in the blank</string>
     <string name="quiz_type_identification">Identification</string>
@@ -75,10 +109,10 @@
     <string name="quiz_mix_empty">Select at least one question type</string>
     <string name="quiz_mix_each">1 question from each selected type</string>
     <string name="quiz_setup_ai_note">Fill in the blank, identification, and explanation are checked by AI on this device.</string>
-    <string name="quiz_setup_generate_action">Generate quiz</string>
+    <string name="quiz_setup_generate_action">Start quiz</string>
     <string name="generating_title">Creating your quiz</string>
     <string name="generating_back_description">Back to quiz setup</string>
-    <string name="generating_status">Creating question %1$d of %2$d…</string>
+    <string name="generating_status">Passage %1$d of %2$d • Question %3$d of %4$d…</string>
     <string name="generating_subtitle">This may take a moment on your device.</string>
     <string name="generating_error_title">Quiz generation failed</string>
     <string name="generating_retry_action">Try again</string>
@@ -87,6 +121,7 @@
     <string name="quiz_close_description">Exit quiz</string>
     <string name="quiz_menu_description">Quiz options</string>
     <string name="quiz_question_position">Question %1$d of %2$d</string>
+    <string name="quiz_passage_question_position">Passage %1$d of %2$d • Question %3$d of %4$d</string>
     <plurals name="quiz_generation_failed_notice">
         <item quantity="one">%1$d question failed to generate. Showing %2$d of %3$d.</item>
         <item quantity="other">%1$d questions failed to generate. Showing %2$d of %3$d.</item>
@@ -135,6 +170,10 @@
     <string name="profile_days">%1$d days</string>
     <string name="profile_current_streak">Current streak</string>
     <string name="profile_longest_streak">Longest streak</string>
+    <string name="profile_pet_goal_title">Daily pet goal</string>
+    <string name="profile_pet_goal_progress">%1$d / %2$d</string>
+    <string name="profile_pet_goal_incomplete">Get 10 correct answers today to earn or keep your streak pet.</string>
+    <string name="profile_pet_goal_complete">Your pet is safe for today.</string>
     <string name="profile_yearly_activity">Yearly activity</string>
     <string name="profile_swipe_hint">Swipe to see the full year</string>
     <string name="profile_less">Less</string>
@@ -146,6 +185,18 @@
     <string name="profile_milestone_progress">%1$d / %2$d %3$s</string>
     <string name="profile_activity_explanation">Activity counts completed quizzes, not mastery.</string>
     <string name="profile_day_activity_description">%1$d quizzes completed</string>
+    <plurals name="streak_pet_description">
+        <item quantity="one">Streak pet. %1$d-day streak. Today’s progress is %2$d out of %3$d. Drag to move.</item>
+        <item quantity="other">Streak pet. %1$d-day streak. Today’s progress is %2$d out of %3$d. Drag to move.</item>
+    </plurals>
+    <string name="streak_pet_open_description">Open or drag streak pet</string>
+    <string name="streak_pet_progress">%1$d/%2$d</string>
+    <string name="streak_pet_today">today</string>
+    <string name="streak_pet_goal_complete">I’m safe for today!</string>
+    <plurals name="streak_pet_answers_remaining">
+        <item quantity="one">Get %1$d more correct answer today to keep me here.</item>
+        <item quantity="other">Get %1$d more correct answers today to keep me here.</item>
+    </plurals>
     <string name="settings_title">Settings</string>
     <string name="settings_back_description">Back to Profile</string>
     <string name="settings_manage_models">Manage offline models</string>

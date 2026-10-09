@@ -3,10 +3,10 @@ package com.example.bukal.ui.history
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.bukal.data.local.AttemptHistoryRow
 import com.example.bukal.data.local.AttemptStatuses
 import com.example.bukal.data.local.BukalDatabase
-import com.example.bukal.data.local.SavedQuizRecord
+import com.example.bukal.data.local.QuizSetHistoryRow
+import com.example.bukal.data.local.SavedQuizSetRecord
 import com.example.bukal.ai.QuizPersistenceRepository
 import java.time.Instant
 import java.time.LocalDate
@@ -39,7 +39,8 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    suspend fun getSavedQuiz(attemptId: Long): SavedQuizRecord = repository.getSavedQuiz(attemptId)
+    suspend fun getSavedQuizSet(quizSetId: Long): SavedQuizSetRecord =
+        repository.getSavedQuizSet(quizSetId)
 
     fun showError(message: String) {
         mutableUiState.value = mutableUiState.value.copy(errorMessage = message)
@@ -50,7 +51,7 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
     }
 }
 
-internal fun List<AttemptHistoryRow>.toHistoryUiState(
+internal fun List<QuizSetHistoryRow>.toHistoryUiState(
     now: LocalDate = LocalDate.now(),
     zoneId: ZoneId = ZoneId.systemDefault(),
 ): HistoryUiState {
@@ -62,11 +63,11 @@ internal fun List<AttemptHistoryRow>.toHistoryUiState(
     )
 }
 
-private fun AttemptHistoryRow.toHistoryAttempt(now: LocalDate, zoneId: ZoneId): HistoryAttempt {
+private fun QuizSetHistoryRow.toHistoryAttempt(now: LocalDate, zoneId: ZoneId): HistoryAttempt {
     val displayEpoch = if (status == AttemptStatuses.COMPLETED) {
         completedAtEpochMs
     } else {
-        generatedAtEpochMs
+        createdAtEpochMs
     }
     val dateTime = Instant.ofEpochMilli(displayEpoch).atZone(zoneId)
     val dateLabel = when (dateTime.toLocalDate()) {
@@ -77,11 +78,12 @@ private fun AttemptHistoryRow.toHistoryAttempt(now: LocalDate, zoneId: ZoneId): 
     val action = if (status == AttemptStatuses.COMPLETED) "Completed" else "Saved"
     val types = quizTypes.split('|').filter(String::isNotBlank).distinct()
     return HistoryAttempt(
-        id = attemptId,
+        id = quizSetId,
         materialName = materialName,
-        passageTitle = passageTitle ?: sourceId,
+        passageTitle = passageTitle ?: "$passageCount passages",
         completedAtLabel = "$action $dateLabel • ${dateTime.format(DateTimeFormatter.ofPattern("h:mm a"))}",
-        typeSummary = types.joinToString(" • ") { it.toDisplayName() },
+        typeSummary = "$questionCount questions • " +
+            types.joinToString(" • ") { it.toDisplayName() },
         scoreLabel = if (status == AttemptStatuses.COMPLETED) {
             "Previous ${earnedPoints.formatPoints()} / ${possiblePoints.formatPoints()}"
         } else {

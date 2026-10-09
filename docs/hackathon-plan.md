@@ -40,9 +40,11 @@ After the first multiple-choice milestone works end to end, the learner must als
 4. Have fill in the blank, identification, and explanation responses evaluated by the downloaded local quiz model against a hidden reference answer and the top five source matches.
 5. Receive a boolean correct or incorrect result, with `false` used whenever the model is unsure, and request a short explanation only when needed.
 6. Request a short local hint that does not reveal the answer.
-7. Open a local Profile page with a GitHub-style yearly activity heatmap based on completed quiz attempts.
-8. View current and longest active-day streaks without creating an account or uploading activity.
+7. Open a local Profile page with a GitHub-style yearly activity heatmap based on completed quiz sets.
+8. View current and longest streaks based on 10 correct answers per local day, with a floating fire pet that grows with the streak and minimizes to the screen edge.
 9. Search imported documents semantically using overlapping text chunks embedded on-device with Granite Embedding 311M Multilingual R2.
+10. Review every currently saved question for one imported material as a tap-to-reveal flashcard without another AI call.
+11. Request one overall Markdown summary per imported file, save the first successful result locally, and reopen it later without another model call.
 
 The detailed contracts and UI rules for this expansion are authoritative in [Quiz Types and Local Profile](quiz-types-and-profile.md).
 
@@ -80,12 +82,13 @@ The detailed contracts and UI rules for this expansion are authoritative in [Qui
 - Explanation questions with local-AI evaluation
 - On-demand local hints during an active quiz
 - Quiz-type selection and mixed-type quiz generation
-- Local profile with yearly activity heatmap and streaks
+- Local profile with yearly activity heatmap, 10-correct daily streaks, and a floating streak pet
 - DOCX import
 - PPTX import
 - Filipino-language evaluation
 - Multiple-document library
 - Local semantic document search
+- User-requested one-time Markdown file summaries
 - Full quiz editing
 - Production-level download recovery
 - Wider device testing
@@ -128,8 +131,8 @@ The detailed contracts and UI rules for this expansion are authoritative in [Qui
 5. Each passage receives a stable source identifier such as `TXT-P003`.
 6. The imported lesson is added to Home without hiding previously imported lessons.
 7. The user selects a passage.
-8. The application first checks Room for a quiz already generated for that passage. If one exists, it opens the stored questions without running AI again.
-9. Otherwise, the application requests each of the five questions from its own fresh, unsaved local-model session. Every user message contains the selected passage plus one focus excerpt copied from that passage; numbered items are focused individually, with paragraph and sentence fallbacks for unnumbered text.
+8. The application checks Room for distinct questions already generated for that passage, randomly reuses matching multiple-choice questions up to the five-slot requirement, and generates only any missing slots.
+9. Every missing question is requested from its own fresh, unsaved local-model session. Every user message contains the selected passage plus one focus excerpt copied from that passage; numbered items are focused individually, with paragraph and sentence fallbacks for unnumbered text.
 10. Each type-specific prompt returns one small JSON object.
 11. The application rejects malformed or unsupported output and retries only that question up to twice. An exhausted slot is skipped without discarding successful questions.
 12. The accepted full or partial quiz is saved locally and appears in History for later retakes.
@@ -139,17 +142,29 @@ The detailed contracts and UI rules for this expansion are authoritative in [Qui
 
 ### Expanded Quiz and Profile Flow
 
-1. The learner selects one or more quiz types before generation.
-2. Bukal distributes five requested questions across the selected types.
-3. Bukal requests each question from a fresh, unsaved model session using the prompt for its assigned type, with the selected passage and one copied focus excerpt as the complete user message.
-4. The application validates each minimal type-specific JSON object and retries only the invalid question up to twice. It continues with a partial quiz and reports failed slots.
-5. During answering, the learner may request a short hint from a separate fresh, unsaved session.
-6. Multiple choice and true or false are checked deterministically.
-7. For fill in the blank, identification, and explanation, Granite retrieves the five closest indexed chunks from the selected passage, then the local quiz model evaluates the response against the reference answer and only those matches.
-8. The result screen shows the boolean local-AI verdict and offers an on-demand, source-grounded **Explain** action.
-9. The generated question set is saved before answering; completion adds its latest score, highest score, completion timestamp, and local date.
-10. History shows one saved or completed quiz per passage. Retakes reuse its stored questions and update that row instead of creating another History item.
-11. Profile derives yearly heatmap intensity and streaks from completed attempts.
+1. The learner selects one to five passages with checkboxes, then selects one or more quiz types.
+2. For each selected passage, Bukal distributes five slots across the selected types, randomly reuses distinct saved questions only within each type's quota, and ignores saved questions of unselected types.
+3. Bukal generates only the per-type deficits and processes passages sequentially to avoid concurrent local-model sessions. Reused prompts are supplied to duplicate validation so a generated top-up does not repeat them.
+4. Bukal requests each question from a fresh, unsaved model session using the prompt for its assigned type, with that question's passage and one copied focus excerpt as the complete user message.
+5. The application validates each minimal type-specific JSON object and retries only the invalid question up to twice. It continues with a partial quiz and reports failed slots.
+6. The answering screen presents the selected passage quizzes as one ordered study flow while preserving each question's passage identity.
+7. During answering, the learner may request a short hint from a separate fresh, unsaved session.
+8. Multiple choice and true or false are checked deterministically.
+9. For fill in the blank, identification, and explanation, Granite retrieves the five closest indexed chunks from that question's passage, then the local quiz model evaluates the response against the reference answer and only those matches.
+10. Results combine the overall score while every item reopens its own source passage and offers an on-demand, source-grounded **Explain** action when applicable.
+11. Each Quiz Setup run saves a fresh composed passage attempt and one new ordered quiz set, leaving the source questionnaires unchanged. History shows one item for that prepared set, and a History retake reopens its exact questions and updates only that item.
+12. Profile counts each completed quiz set as one heatmap activity unit, counts each distinct persisted correct question at most once toward the local date's 10-answer goal, and derives the shared Profile/pet streak from qualifying dates.
+13. From passage selection, the learner may open file-level flashcards built from the saved questions across all passages; tapping a card reveals its saved answer key.
+14. From passage selection, the learner may request a file summary. Bukal summarizes every ordered passage, reduces the validated source-linked notes into one Markdown overview with key points, saves the first successful result on the material, and only reads that stored result on later visits.
+
+### File Summary Flow
+
+1. Summarization starts only when the learner chooses **File summary** for an imported material.
+2. If that material already has a saved summary, Bukal opens it immediately without loading the model.
+3. Otherwise the selected local quiz model summarizes every bounded passage in order using concise Markdown; Granite is not used to select top matches because an overall summary must cover the whole file.
+4. Large note sets are reduced in bounded batches while retaining validated passage source IDs.
+5. Bukal validates the returned Markdown as non-empty, bounded, non-JSON text with only supplied source IDs, then writes it with the quiz-model ID and generation time only when the material has no summary.
+6. Failed or cancelled generation writes nothing and may be retried. A successful summary has no regenerate action.
 
 ### Document Search Flow
 
@@ -173,9 +188,11 @@ flowchart LR
     G["Android system file picker"] --> H["Supported text extractor"]
     H --> I["Passage chunker and source IDs"]
     I --> X["Overlapping search chunks"]
+    I --> AA["One-time file summarizer"]
+    AA --> U["Room / local SQLite database"]
     X --> Y["Granite embedding engine"]
     Y --> Z["Local semantic search"]
-    I --> J["User selects passage and quiz types"]
+    I --> J["User selects up to five passages and quiz types"]
     J --> K["Typed prompt builder"]
     F --> L["Local model generation"]
     K --> L
@@ -205,7 +222,7 @@ There is no backend, cloud database, or project server. Room uses a private loca
 | `DocumentImporter` | Copies supported files from Android's system picker into private app storage and coordinates persistence |
 | `DocumentTextExtractor` | Extracts strict UTF-8 TXT, text-based PDF pages, DOCX body paragraphs, and PPTX slide text without OCR |
 | `PassageChunker` | Creates bounded passages and stable source IDs |
-| `QuizConfig` | Stores selected quiz types and their required counts |
+| `QuizConfig` | Stores selected passages, selected quiz types, and their required counts |
 | `PromptBuilder` | Produces strict typed-question, answer-evaluation, and hint instructions |
 | `QuizGenerator` | Runs local inference |
 | `QuestionValidator` | Rejects invalid common or type-specific model output |
@@ -214,10 +231,12 @@ There is no backend, cloud database, or project server. Room uses a private loca
 | `EmbeddingModelManager` | Verifies and loads the pinned local embedding model package |
 | `SearchIndexer` | Splits passages into overlapping chunks and stores one Granite vector per chunk |
 | `DocumentSearch` | Embeds a query and ranks compatible local chunk vectors by cosine similarity |
-| `BukalDatabase` | Room database backed by SQLite with the six tables defined in the reviewed schema |
+| `FileSummarizer` | Summarizes every ordered passage, hierarchically reduces long files, validates Markdown and source IDs, and saves one result per material |
+| Markwon summary renderer | Parses saved CommonMark into Android-native styled text so Markdown syntax is not displayed literally |
+| `BukalDatabase` | Room database backed by SQLite with the eight tables defined in the reviewed schema |
 | Room DAOs | Save and query structured learning data, history, daily activity, and streak inputs |
 | `SettingsStore` | Stores small application preferences with DataStore |
-| `ActivitySummary` | Derives yearly daily counts and streaks from completed attempts |
+| `ActivitySummary` | Derives yearly completed-quiz counts plus 10-correct qualifying dates and streaks from completed quiz sets and question results |
 | Compose screens | Provide model setup, import, quiz setup, answering, evidence, history, and profile interfaces |
 
 Keep everything in one Android application module. Do not introduce microservices, a backend, dependency-injection frameworks, or separate architecture layers for every class.
@@ -354,7 +373,7 @@ The model does not need to return a type, IDs, source IDs, evidence, criteria, o
 
 Accept a generated question only when:
 
-- There are exactly four options.
+- The accepted question has exactly four options; if the model returns extras, retain the matching answer and the first three distractors instead of retrying.
 - All options are non-empty and unique.
 - The returned answer matches exactly one option; Bukal derives its internal index.
 - A true-or-false prompt is a yes-or-no question ending in `?`, not a statement or open-ended question, and its answer is a JSON boolean.
@@ -418,10 +437,10 @@ external-files/
 
 This is a logical storage map rather than a literal directory layout for Room tables and DataStore files.
 
-Example attempt model:
+Example quiz-set model:
 
 ```kotlin
-data class Attempt(
+data class QuizSet(
     val id: String,
     val materialName: String,
     val modelId: String,
@@ -431,13 +450,13 @@ data class Attempt(
     val score: Double,
     val highestScore: Double,
     val total: Double,
-    val responses: List<AttemptResponse>
+    val passageAttempts: List<Attempt>
 )
 ```
 
-The example is conceptual: the actual response model must support option selections, text responses, and local-AI evaluation verdicts. The Profile page derives its yearly heatmap and streaks from `completedLocalDate`; app opens and abandoned quizzes do not count.
+The example is conceptual: each member attempt still owns its questions, option selections, text responses, and local-AI evaluation verdicts. The Profile page derives its yearly heatmap from completed quiz sets and its daily streak from dates with at least 10 persisted correct question results; app opens and abandoned quizzes do not count.
 
-Save a quiz, its questions, and flattened learner results in one Room transaction. The legacy matching-pairs table remains only for quizzes saved by older builds. A retake updates the same quiz graph, keeps the latest score in `earnedPoints`, and retains the maximum in `highestEarnedPoints`. Index completion time and `completedLocalDate` for History and Profile. Selected quiz types are derived from the saved questions rather than duplicated in another table.
+Save a generated passage quiz and its questions in one Room transaction, then link all selected passage quizzes through one ordered quiz set. The legacy matching-pairs table remains only for quizzes saved by older builds. Completion and retakes update the whole set plus every member graph atomically, keep the latest combined score in `earnedPoints`, and retain the maximum in `highestEarnedPoints`. Index set completion time and `completedLocalDate` for History and Profile. Selected quiz types are derived from member questions rather than duplicated.
 
 Keep downloaded model packages and retained original learning-material files outside SQLite. Do not store large model or document files in Room. Extracted passages, overlapping search-chunk text, and compact embedding vectors are structured searchable data and may be stored in Room.
 
@@ -473,7 +492,7 @@ The detailed visual and interaction contract is defined in [Quiz Types and Local
 - Use a soft cream background, white surfaces, blue primary actions, yellow highlights, and restrained success/error colors from the documented token set.
 - Use the Android system font initially, normal-sized headings, readable body copy, and touch targets of at least 48 dp.
 - Limit doodles to small accents in empty, loading, success, and completion states. Do not design screens as posters or let illustrations displace the learner's main task.
-- Use progress, completion feedback, streaks, and the yearly heatmap as the product's useful gamification. Do not add coins, experience points, levels, leaderboards, fake achievements, or mastery claims.
+- Use progress, completion feedback, 10-correct daily streaks, the floating fire pet, and the yearly heatmap as the product's useful gamification. The pet appears only while a current streak exists, grows at 3, 7, and 14 days, can be dragged without leaving the available screen area, and snaps into the nearest left or right edge when released. Do not add coins, experience points, levels, leaderboards, fake achievements, or mastery claims.
 - Keep permanent bottom navigation to **Home**, **History**, and **Profile**. Model setup is the first-launch gate; passage selection through results is a focused nested quiz flow.
 - Treat generation and local-AI checking as transient destinations. Show indeterminate progress instead of invented percentages.
 - Open source evidence from Results in a bottom sheet or expandable detail instead of adding another permanent destination.
@@ -546,7 +565,7 @@ Build only these screens:
 ### Hour 7.5 to 8.5 — Save History and Handle Lifecycle
 
 - Save the attempt and its question results in one Room transaction.
-- Display the previous and highest score on the single History item for each quiz.
+- Display the previous and highest combined score on the single History item for each quiz set.
 - Restore active downloads and verified model files after relaunch.
 - Prevent duplicate engine initialization.
 - Close engine resources correctly.
@@ -612,7 +631,8 @@ Do not remove:
 | Open answers receive inconsistent judgments | Retrieve only the top five chunks from the selected passage, grade against the hidden reference and those matches, require `false` when unsure, and keep explanations on demand |
 | Granite package is too slow or incompatible on Android | Pin a mobile runtime artifact, benchmark it on the presentation phone, and do not claim support before that test passes |
 | Search returns irrelevant text | Test chunk size, overlap, dimensions, and retrieval quality on representative multilingual documents |
-| Activity dates or streaks are wrong | Persist a completion local date and test year boundaries, leap years, and consecutive-day calculations |
+| A file summary omits sections or invents details | Summarize every ordered passage, reduce only source-tagged notes, validate cited IDs, and manually review short, medium, long, English, Filipino, and mixed-language fixtures on the presentation phone |
+| Activity dates or streaks are wrong | Persist a completion local date, aggregate correct question results only from completed sets, and test the 10-answer threshold, year boundaries, leap years, and consecutive-day calculations |
 | A partial attempt is saved | Save the attempt and all child records in one Room transaction and test rollback behavior |
 | A schema update loses local history | Export schemas and add explicit Room migration tests before release |
 | Document parsing takes too long | Use TXT as the guaranteed hackathon format |
@@ -642,9 +662,14 @@ Do not remove:
 - [ ] Attempt history survives application restart.
 - [ ] Model deletion works.
 - [ ] The full quiz flow works in airplane mode after model installation.
+- [ ] A requested file summary processes every passage, saves only after complete validation, and reopens after relaunch without another model call.
 
 ### Expanded Product Verification
 
+- [ ] The learner can select one to five passages with checkboxes and sees which passages have reusable saved questions.
+- [ ] Each passage reuses only distinct saved questions matching the requested per-type quotas and generates only the missing slots.
+- [ ] Every Quiz Setup run creates a new History item, while a History retake reopens and updates the exact saved set.
+- [ ] Multi-passage answering keeps question IDs and learner responses distinct and evaluates each open response against its own passage.
 - [ ] The learner can select one or more of the five supported quiz types.
 - [ ] Generation requests five questions with the requested type distribution; exhausted slots are skipped, and a partial quiz clearly reports how many failed.
 - [ ] Multiple choice and true or false are checked deterministically.
@@ -655,7 +680,8 @@ Do not remove:
 - [ ] Completed attempts retain typed learner responses and verdicts after relaunch.
 - [ ] Room DAO, relationship, transaction, aggregation, and migration tests pass.
 - [ ] Profile shows completed-quiz intensity for each local date in a selected year.
-- [ ] Current and longest active-day streaks are derived correctly.
+- [ ] Current and longest streaks use consecutive local dates with at least 10 correct answers.
+- [ ] The streak pet appears only for a current streak, grows at the documented milestones, minimizes to the edge after inactivity, and disappears after a missed qualifying day.
 - [ ] Profile activity survives relaunch and works without internet access.
 - [ ] Imported passages are split into overlapping chunks with one compatible Granite embedding per chunk.
 - [ ] Semantic search returns source-linked passage results locally and works without internet after model setup.
@@ -664,7 +690,7 @@ Do not remove:
 
 The first hackathon milestone is complete when a model-free APK installs and verifies the fixed Granite model plus at least one quiz model, imports a TXT lesson, generates five validated passage-grounded MCQs locally, completes the quiz, lets the learner reopen the selected passage, and repeats the workflow in airplane mode.
 
-The expanded product scope is complete when the same local-first workflow supports all five quiz types; retrieves the top five selected-passage chunks before boolean local grading of fill in the blank, identification, and explanation; generates source-grounded explanations only on request; saves typed attempts; presents a correct yearly activity heatmap and streak summary; and searches overlapping document chunks locally with the selected Granite embedding model.
+The expanded product scope is complete when the same local-first workflow supports selection of up to five passages with type-aware saved-question reuse, deficit-only generation, and one new durable History object per Quiz Setup run; preserves exact History retakes; supports all five quiz types; retrieves the top five question-passage chunks before boolean local grading of fill in the blank, identification, and explanation; generates source-grounded explanations only on request; saves typed attempts; presents a correct yearly activity heatmap and streak summary; searches overlapping document chunks locally with the selected Granite embedding model; and creates at most one user-requested, locally saved Markdown summary for each imported material.
 
 Structured learning data must persist in the local Room/SQLite database, small preferences in DataStore, and large models or retained source documents in app-specific files. No learner data requires a server.
 

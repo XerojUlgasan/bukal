@@ -17,14 +17,14 @@ The complete product scope and technical decisions remain in the [hackathon plan
 ## Current Implementation Status
 
 - A runnable Compose launcher opens the model-setup gate and connects all ten mock reference screens through one Navigation Compose graph.
-- Quiz generation sends the selected bounded passage plus one focus excerpt copied from it to the selected verified quiz model and returns up to five typed questions. Numbered items are focused individually, with paragraph and sentence fallbacks; duplicate retries advance to another focus while shape retries retain the topic and name the exact problem. Submission scores multiple choice and true or false deterministically. Each answered open item performs a passage-scoped Granite search capped at five matches, then a fresh local quiz-model session returns only `true` or `false`. Results use the real responses and score; a separate top-five-grounded explanation is generated only after the learner taps **Explain**. Attempt persistence remains pending.
+- Passage selection supports one to five checked passages. For each passage, Quiz Setup randomly reuses distinct saved questions only within the selected per-type quotas, sequentially generates the deficits, saves a fresh composed attempt and History item, and namespaces in-memory question IDs by passage before presenting one combined answering flow. Exact History retakes remain unchanged. Each answered open item still performs a Granite search against only its own passage.
 - History and Profile reuse `BukalBottomNavigation`; the focused Generating, Quiz Answering, AI Checking, and Results screens intentionally omit the root footer.
-- Profile reads completed attempts from Room, calculates current and longest streaks across year boundaries, supports year selection, and derives achievement and milestone progress locally. Its horizontally scrollable heatmap uses `0`, `1`, `2`, `3`, and `4+` intensity levels.
+- Profile reads completed quiz sets and persisted question results from Room. The heatmap still uses completed-set intensity levels `0`, `1`, `2`, `3`, and `4+`, while current and longest streaks require 10 correct answers on each consecutive local date. A transparent fire pet floats on Home, History, and Profile while the streak is current, grows at 3, 7, and 14 days, can be dragged within the available screen, snaps to the nearest side on release, and minimizes after seven seconds.
 - The five-question distribution is deterministic in selected-type order, and focused unit tests cover empty, single-type, remainder, and all-five-type cases.
 - `BukalBottomNavigation` is the reusable Material 3 footer for the Home, History, and Profile destinations. It exposes typed selection state and callbacks without owning navigation.
 - The shared phone-first scale uses compact typography, 48 dp actions, a 64 dp footer, smaller icons, and 12–16 dp card padding while preserving 48 dp minimum touch targets.
 - Kotlin uses AGP 9's built-in support. Compose, Material 3, the documented light theme, and the Compose compiler plugin are configured.
-- Room 2.8.5 and KSP 2.3.12 are configured. The reviewed six entities use schema version 3. Passage generation reuses an existing quiz, retakes update that same graph, and History shows its latest previous score plus retained highest score. The schema export, explicit migrations, validated transaction DAOs, embedding-vector codec, local unit tests, and an in-memory Room instrumentation test are present.
+- Room 2.8.5 and KSP 2.3.12 are configured. The reviewed eight entities use schema version 4. Quiz Setup creates a fresh attempt and quiz set from reusable matching questions plus generated deficits; exact History retakes update the saved set. History shows each set's latest combined score plus retained highest score. The schema export, explicit migrations, validated transaction DAOs, embedding-vector codec, local unit tests, and an in-memory Room instrumentation test are present.
 - Home now opens Android's document picker for TXT, text-based PDF, DOCX, and PPTX. Import copies the original into private app storage, extracts text off the UI thread, saves bounded passages in Room, creates pending overlapping search chunks for later embedding, and keeps every imported lesson visible on Home.
 - TXT, DOCX, and PPTX extraction plus normalization, stable passage IDs, bounds, and overlap are covered by local tests. The PDFBox Android extractor has an instrumentation test, but that test still requires an emulator or physical device run.
 - Navigation Compose and LiteRT-LM Android `0.18.0` are configured. Serialization and DataStore are not configured yet.
@@ -196,15 +196,18 @@ The focused `GraniteEmbeddingIndexerDeviceTest` passed on 2026-10-09 with one ch
 - [x] Connect the Home import action to the system picker and show importing, error, empty, and recent-material states.
 - [x] Keep every imported lesson visible and selectable after another file is chosen.
 - [x] Display mock bounded passage previews with their source IDs.
-- [x] Let the learner select exactly one passage in the mock UI.
+- [x] Let the learner select one to five passages with accessible checkboxes.
+- [x] Show the reusable saved-question count for each passage.
 - [x] Keep the material name visible and provide a sticky continue action after a valid passage is selected.
+- [x] Add a **Flashcards** action that opens the active material's saved questions across all passages without running AI.
+- [x] Show one question-first card at a time, flip to its saved answer on tap, reset on previous/next, and provide an empty state.
 - [x] Add mock quiz setup with selectable multiple choice, fill in the blank, identification, true or false, and explanation types.
-- [x] Require at least one selected quiz type before enabling the mock Generate action.
+- [x] Require at least one selected quiz type before enabling the Start Quiz action.
 - [x] Show that Bukal will request five questions and may continue with fewer when individual slots exhaust their retries.
 - [x] Explain that identification and explanation are evaluated locally by AI.
 - [x] Update the mock information text to include fill in the blank in local-AI evaluation.
 - [x] Use selectable type chips and show the resulting deterministic five-question distribution without adding points, coins, or levels.
-- [ ] Prevent generation when no valid passage is selected.
+- [x] Prevent generation when no valid passage is selected.
 - [x] Provide a clear way to import another supported lesson file.
 - [ ] Add a local document-search field and source-linked result list to Home without creating another permanent navigation destination.
 
@@ -212,8 +215,9 @@ The focused `GraniteEmbeddingIndexerDeviceTest` passed on 2026-10-09 with one ch
 
 - [ ] A learner can import a prepared lesson and choose a passage without seeing raw implementation details.
 - [ ] Empty, failed, and successful import states are distinguishable.
-- [ ] The selected passage and source ID passed to the next step match what the learner chose.
+- [x] Selected passage IDs passed to the next step match the checked passages in material order.
 - [x] Selected quiz types and their deterministic five-question distribution match what the learner requested in the mock UI and focused unit tests.
+- [x] Focused unit coverage confirms that every current question type and legacy matching data resolves to its saved answer key.
 - [ ] A search query returns relevant chunk previews and opens the correct passage entirely on-device.
 
 ## Task 8 — Define Typed Question Contracts and Deterministic Validators
@@ -225,7 +229,7 @@ The focused `GraniteEmbeddingIndexerDeviceTest` passed on 2026-10-09 with one ch
 - [x] Parse model output with `kotlinx.serialization`.
 - [x] Remove at most one outer plain or `json` Markdown code fence before otherwise strict JSON parsing.
 - [x] Validate non-empty, unique question text while preserving the requested type distribution.
-- [x] Validate four unique options and correct answer text for multiple choice, then derive its internal answer index.
+- [x] Require at least four unique options, normalize extras to the matching answer plus three distractors, and derive the internal answer index.
 - [x] Discourage negative multiple-choice wording without rejecting otherwise usable output.
 - [x] Accept fill-in-the-blank questions with any underscore length or a direct question when the hidden reference answer is present.
 - [x] Validate hidden reference answers for identification and explanation.
@@ -265,6 +269,9 @@ The focused `GraniteEmbeddingIndexerDeviceTest` passed on 2026-10-09 with one ch
 - [x] Prevent concurrent generation requests and duplicate engine initialization.
 - [x] Close each conversation after generation and release the engine when the generation ViewModel is cleared.
 - [x] Save every successful full or partial generation and its question graph atomically before opening the answering screen.
+- [x] Reuse distinct matching questions up to each selected type's quota and sequentially generate only the missing slots for every selected passage.
+- [x] Save each Quiz Setup composition as a fresh attempt and History item without changing exact History-retake behavior.
+- [x] Namespace active question IDs by passage so responses cannot collide across reused or generated quizzes.
 
 ### Acceptance and Verification
 
@@ -283,6 +290,7 @@ The focused `GraniteEmbeddingIndexerDeviceTest` passed on 2026-10-09 with one ch
 
 - [x] Show one mock question at a time.
 - [x] Show mock progress such as `2 of 5`.
+- [x] Show passage and per-passage question position during a multi-passage quiz.
 - [x] Keep the mock question and response area visually focused, with no decorative illustration competing with the answer controls.
 - [x] Show four selectable options for the mock multiple-choice question.
 - [x] Show a short text field for fill in the blank.
@@ -315,6 +323,7 @@ The focused `GraniteEmbeddingIndexerDeviceTest` passed on 2026-10-09 with one ch
 - [x] Build a labeled plain-text evaluation request that keeps the learner answer distinct from the reference and retrieved source text.
 - [x] Mark common explicit non-answers false locally without embedding retrieval or quiz-model inference.
 - [x] Build an embedding query from the question, learner response, and hidden reference answer; send only those fields plus the top five compatible chunks from the selected passage to the quiz model.
+- [x] Partition multi-passage checking by passage so every open response searches only its own source.
 - [x] Use a fresh, unsaved model session for each evaluation and keep no conversation history.
 - [x] Accept only `true` or `false`, with `false` required when the model is unsure.
 - [x] Keep feedback and explanation generation out of the grading call.
@@ -345,6 +354,7 @@ The focused `GraniteEmbeddingIndexerDeviceTest` passed on 2026-10-09 with one ch
 - [x] Show an **Explain** action only for answered, AI-evaluated items.
 - [x] Generate a short source-grounded explanation only after the learner taps **Explain**.
 - [x] Show the original selected passage in a bottom sheet rather than a separate permanent navigation destination.
+- [x] Open the correct item-specific passage from combined multi-passage results.
 
 ### Acceptance and Verification
 
@@ -367,10 +377,11 @@ The focused `GraniteEmbeddingIndexerDeviceTest` passed on 2026-10-09 with one ch
 - [x] Load current typed questions and legacy matching-pair relationships safely and expose refreshed Room-backed history.
 - [x] Add a simple history screen showing saved and completed quizzes; selecting either starts a fresh retake.
 - [x] Reuse the existing generated quiz for a passage instead of running local AI again.
-- [x] Update the same quiz graph on retake and show its latest previous score plus retained highest score without adding another History item.
+- [x] Update the same quiz set and member graphs on retake and show its latest combined score plus retained highest score without adding another History item.
+- [x] Persist an ordered quiz set over reusable per-passage rows so a multi-passage flow appears as one History object.
 - [x] Keep downloaded models and retained original files outside Room.
 - [x] Store only per-chunk embedding vectors in Room, encoded as little-endian floats and validated against their recorded dimensions.
-- [x] Export Room schema version 3; retain the version 1 to 2 migration and add version 2 to 3 for highest score.
+- [x] Export Room schema version 4; retain earlier migrations and add version 3 to 4 for quiz-set tables plus legacy one-item backfill.
 - [ ] Add focused in-memory Room tests for DAOs, relationships, transactions, and cascade behavior.
 
 On 2026-10-09, the focused Room database and migration suites passed all four tests on the connected Xiaomi device, covering the version 2 to 3 highest-score migration, saved-to-completed in-place update, retake replacement without a new row, highest-score retention, relationships, activity queries, and cascades. Two final assertions for existing passage-quiz lookup compile, but their rerun was blocked when the phone canceled the test-APK install with `INSTALL_FAILED_USER_RESTRICTED`.
@@ -380,7 +391,7 @@ On 2026-10-09, the focused Room database and migration suites passed all four te
 - [ ] A mixed-type saved quiz appears immediately after generation, remains after relaunch, and becomes a completed attempt after checking.
 - [ ] Selecting a saved or completed History item starts a retake with cleared responses and the stored questions.
 - [ ] History and typed results survive application restart.
-- [ ] Each passage keeps one generated quiz; retakes update it without adding another History item.
+- [ ] Each passage keeps one generated quiz, while an exact passage selection keeps one quiz-set History item that retakes update in place.
 - [ ] A failed child-record write rolls back the complete attempt transaction.
 - [ ] Deleting or updating records follows the documented foreign-key behavior.
 - [ ] No learner data is uploaded or written outside the local Room database and app-specific storage.
@@ -390,30 +401,60 @@ On 2026-10-09, the focused Room database and migration suites passed all four te
 ### Implementation
 
 - [x] Add the Profile destination.
-- [x] Query daily activity from Room by completed-attempt local date.
+- [x] Query daily activity from Room by completed quiz-set local date.
 - [x] Show the completed quiz total for the selected year.
 - [x] Show a week-by-day yearly heatmap with month and weekday guidance.
 - [x] Make the week columns horizontally scrollable on narrow phones instead of shrinking cells below a usable size.
 - [x] Support year selection.
 - [x] Use tested mock intensity levels for `0`, `1`, `2`, `3`, and `4+` completed quizzes.
-- [x] Display current and longest active-day streaks derived from completed Room attempts.
+- [x] Aggregate distinct persisted `correct` questions by completed quiz-set local date without adding a counter table; copied or retaken questions count once per date.
+- [x] Display current and longest streaks derived from dates with at least 10 correct answers.
+- [x] Show daily correct-answer progress toward the 10-answer goal.
+- [x] Add the transparent floating fire pet to Home, History, and Profile while a current streak exists.
+- [x] Grow the pet at 3, 7, and 14 days, let it be dragged within the available screen, snap and minimize it to the nearest edge on release or after seven seconds, and restore it on tap.
+- [x] Remove the active pet after a full missed qualifying day and return it when a later date reaches the goal.
 - [x] Show a **Less** to **More** intensity legend.
 - [x] Explain that activity measures usage consistency, not mastery.
 - [x] Keep Profile in the Home/History/Profile bottom navigation and avoid account, social, ranking, or reward-economy UI.
 - [x] Add local achievement cards and next-milestone progress.
-- [x] Replace mock achievement and milestone states with values derived from completed attempts and stored question types.
+- [x] Replace mock achievement and milestone states with values derived from completed quiz sets and their stored question types.
 
 ### Acceptance and Verification
 
 - [ ] App opens, imports, and abandoned quizzes do not create activity.
 - [ ] Multiple completed quizzes on one date increase only that day's intensity.
 - [ ] Empty dates, consecutive dates, streak breaks, year boundaries, and leap years are tested.
+- [x] Focused unit tests cover the 10-correct threshold and current streak derivation.
+- [ ] A focused Room test confirms correct-answer aggregation across multiple completed sets on one local date.
 - [ ] Yearly totals and daily counts are produced by focused DAO/query tests.
 - [ ] Changing the selected year shows the correct attempts.
 - [ ] Profile survives relaunch and works in airplane mode.
 - [ ] No account, cloud profile, or network activity is introduced.
 
-## Task 15 — Complete End-to-End Hardening and Demonstration Verification
+## Task 15 — Add One-Time File Summaries
+
+### Implementation
+
+- [x] Start summarization only after the learner chooses **File summary** for an imported material.
+- [x] Return the saved summary immediately when the material already has one; never call the model or expose regeneration for a successful summary.
+- [x] Summarize every ordered bounded passage with the selected local quiz model rather than using Granite top-match retrieval.
+- [x] Reduce long note sets in bounded batches while validating that every final key point cites only supplied passage source IDs.
+- [x] Accept Markdown directly from the model, unwrap one optional outer Markdown fence, and reject empty, oversized, JSON-shaped, fenced-code, or unknown-source output.
+- [x] Render saved Markdown through Markwon's CommonMark parser so heading levels, emphasis, ordered and unordered lists, quotes, links, and other supported Markdown do not appear as raw syntax.
+- [x] Save `summary_markdown`, `summary_model_id`, and `summarized_at_epoch_ms` on the material only when `summary_markdown` is null.
+- [x] Add explicit Room migration 4 to 5 and export schema 5.
+- [x] Leave all summary fields null after cancellation or failure so the learner may retry.
+
+### Acceptance and Verification
+
+- [x] Focused unit tests cover every-passage processing, optional Markdown fences, four useful passage bullets without retry, source-linked Markdown, deterministic source fallback, and retry after an unknown source ID.
+- [x] An instrumentation test proves the first saved summary cannot be replaced by a second write.
+- [x] A migration test proves version 4 materials receive nullable summary fields.
+- [ ] A short, medium, and long prepared file produce useful summaries on the presentation phone without freezing the interface.
+- [ ] English, Filipino, and mixed-language fixtures retain their main language and contain no unsupported claims in manual source review.
+- [ ] A saved summary reopens after relaunch and in airplane mode without initializing the local model.
+
+## Task 16 — Complete End-to-End Hardening and Demonstration Verification
 
 ### Automated and Package Checks
 
@@ -451,9 +492,10 @@ On 2026-10-09, the focused Room database and migration suites passed all four te
 - [ ] Complete the quiz and confirm its score.
 - [ ] Confirm deterministic and local-AI answer evaluation paths.
 - [ ] Search a retained document with Granite, open a returned passage, and confirm no network request occurs.
+- [ ] Request one file summary, confirm every passage is processed, relaunch, and reopen the same saved Markdown without another model call.
 - [ ] Reopen the selected source passage from the results.
 - [ ] Confirm the attempt appears after relaunch.
-- [ ] Confirm the completed attempt appears on the Profile heatmap.
+- [ ] Confirm the completed quiz set appears once on the Profile heatmap.
 - [ ] Confirm the selected year's total and streak calculations.
 - [ ] Enable airplane mode.
 - [ ] Close and reopen Bukal.
@@ -462,20 +504,21 @@ On 2026-10-09, the focused Room database and migration suites passed all four te
 
 ## Definition of Done
 
-- [ ] All fifteen required tasks are complete.
+- [ ] All sixteen required tasks are complete.
 - [ ] All unchecked required items are either resolved or explicitly documented as blockers.
 - [ ] The APK contains no model weights.
 - [ ] One supported model is downloadable, verified, and usable on the presentation phone.
 - [ ] A learner can import TXT, select a passage and quiz types, generate five validated typed questions, complete them, reopen the selected passage, and review local history.
 - [ ] Fill in the blank, identification, and explanation responses receive top-five-grounded boolean local-AI verdicts, with explanations generated only on request.
-- [ ] Profile correctly shows yearly completed-quiz activity and active-day streaks.
+- [ ] Profile correctly shows yearly completed-quiz activity and 10-correct daily streaks, and the floating pet follows that same streak.
 - [ ] Overlapping chunks are embedded with Granite and searchable locally using compatible model IDs and dimensions.
+- [ ] Each imported material can receive at most one user-requested Markdown summary, which is stored locally and reused without regeneration.
 - [ ] Structured learning data uses Room/SQLite, preferences use DataStore, and large files remain outside the database.
 - [ ] The same workflow succeeds in airplane mode after model installation.
 
 ## Deferred Backlog
 
-Do not begin these before the fifteen required tasks pass:
+Do not begin these before the sixteen required tasks pass:
 
 - [ ] Text-based PDF import
 - [ ] GPU acceleration

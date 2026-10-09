@@ -1,15 +1,18 @@
 package com.example.bukal.ai
 
 import com.example.bukal.data.local.AttemptEntity
-import com.example.bukal.data.local.AttemptHistoryRow
 import com.example.bukal.data.local.AttemptStatuses
 import com.example.bukal.data.local.BukalDatabase
 import com.example.bukal.data.local.CompletedAttemptRecord
+import com.example.bukal.data.local.CompletedQuizSetAttempt
+import com.example.bukal.data.local.CompletedQuizSetRecord
 import com.example.bukal.data.local.MatchingPairEntity
 import com.example.bukal.data.local.QuestionEntity
 import com.example.bukal.data.local.QuestionRecord
 import com.example.bukal.data.local.QuestionResults
+import com.example.bukal.data.local.QuizSetHistoryRow
 import com.example.bukal.data.local.SavedQuizRecord
+import com.example.bukal.data.local.SavedQuizSetRecord
 import java.time.Instant
 import java.time.ZoneId
 import kotlinx.coroutines.Dispatchers
@@ -35,47 +38,76 @@ class QuizPersistenceRepository(
         )
     }
 
+    suspend fun getOrCreateQuizSet(attemptIds: List<Long>): Long = withContext(Dispatchers.IO) {
+        val createdAt = nowEpochMillis()
+        database.attemptDao().getOrCreateQuizSet(
+            attemptIds = attemptIds,
+            createdAtEpochMs = createdAt,
+            localDate = createdAt.localDate(),
+        )
+    }
+
     suspend fun saveCompleted(
-        request: QuizEvaluationRequest,
-        result: QuizResultSummary,
-        savedQuizId: Long?,
+        quizSetId: Long,
+        completions: List<PassageQuizCompletion>,
     ): Long = withContext(Dispatchers.IO) {
-        val savedQuiz = savedQuizId?.let { id ->
-            requireNotNull(database.attemptDao().getSavedQuiz(id)) { "Saved quiz $id no longer exists." }
+        val savedSet = requireNotNull(database.attemptDao().getSavedQuizSet(quizSetId)) {
+            "Saved quiz set $quizSetId no longer exists."
         }
-        if (savedQuiz != null) {
-            require(savedQuiz.passage.id == request.passage.id) { "The saved quiz passage changed." }
-            require(savedQuiz.toQuizQuestions().sameQuestionsAs(request.questions)) {
+        require(savedSet.quizzes.map { it.attempt.id } == completions.map { it.savedQuizId }) {
+            "The saved quiz set changed before completion."
+        }
+        savedSet.quizzes.zip(completions).forEach { (savedQuiz, completion) ->
+            require(savedQuiz.passage.id == completion.request.passage.id) {
+                "The saved quiz passage changed."
+            }
+            require(savedQuiz.toQuizQuestions().sameQuestionsAs(completion.request.questions)) {
                 "The saved questions changed before completion."
             }
         }
 
         val completedAt = nowEpochMillis()
-        val record = completedRecord(
-            request = request,
-            result = result,
-            generatedAtEpochMs = savedQuiz?.attempt?.generatedAtEpochMs ?: completedAt,
-            completedAtEpochMs = completedAt,
-            completedLocalDate = completedAt.localDate(),
-            highestEarnedPoints = maxOf(
-                savedQuiz?.attempt?.highestEarnedPoints ?: 0.0,
-                result.earnedPoints,
+        val completedLocalDate = completedAt.localDate()
+        val attempts = savedSet.quizzes.zip(completions).map { (savedQuiz, completion) ->
+            CompletedQuizSetAttempt(
+                attemptId = completion.savedQuizId,
+                record = completedRecord(
+                    request = completion.request,
+                    result = completion.result,
+                    generatedAtEpochMs = savedQuiz.attempt.generatedAtEpochMs,
+                    completedAtEpochMs = completedAt,
+                    completedLocalDate = completedLocalDate,
+                    highestEarnedPoints = maxOf(
+                        savedQuiz.attempt.highestEarnedPoints,
+                        completion.result.earnedPoints,
+                    ),
+                ),
+            )
+        }
+        val earnedPoints = completions.sumOf { it.result.earnedPoints }
+        val possiblePoints = completions.sumOf { it.result.possiblePoints }
+        database.attemptDao().replaceQuizSetWithCompleted(
+            CompletedQuizSetRecord(
+                quizSet = savedSet.quizSet.copy(
+                    status = AttemptStatuses.COMPLETED,
+                    completedAtEpochMs = completedAt,
+                    completedLocalDate = completedLocalDate,
+                    earnedPoints = earnedPoints,
+                    highestEarnedPoints = maxOf(savedSet.quizSet.highestEarnedPoints, earnedPoints),
+                    possiblePoints = possiblePoints,
+                ),
+                attempts = attempts,
             ),
         )
-        if (savedQuizId == null) {
-            database.attemptDao().insert(record)
-        } else {
-            database.attemptDao().replaceQuizWithCompleted(savedQuizId, record)
-        }
     }
 
-    suspend fun getHistory(): List<AttemptHistoryRow> = withContext(Dispatchers.IO) {
+    suspend fun getHistory(): List<QuizSetHistoryRow> = withContext(Dispatchers.IO) {
         database.attemptDao().getHistory()
     }
 
-    suspend fun getSavedQuiz(attemptId: Long): SavedQuizRecord = withContext(Dispatchers.IO) {
-        requireNotNull(database.attemptDao().getSavedQuiz(attemptId)) {
-            "Saved quiz $attemptId no longer exists."
+    suspend fun getSavedQuizSet(quizSetId: Long): SavedQuizSetRecord = withContext(Dispatchers.IO) {
+        requireNotNull(database.attemptDao().getSavedQuizSet(quizSetId)) {
+            "Saved quiz set $quizSetId no longer exists."
         }
     }
 
@@ -83,11 +115,26 @@ class QuizPersistenceRepository(
         database.attemptDao().getQuizForPassage(passageId)
     }
 
+    suspend fun getQuestionPoolForPassage(passageId: Long): List<QuizQuestion> =
+        withContext(Dispatchers.IO) {
+            database.attemptDao().getQuizzesForPassage(passageId)
+                .flatMap(SavedQuizRecord::toQuizQuestions)
+                .distinctBy { question ->
+                    question.type to question.prompt.trim().lowercase()
+                }
+        }
+
     private fun Long.localDate(): String = Instant.ofEpochMilli(this)
         .atZone(zoneId)
         .toLocalDate()
         .toString()
 }
+
+data class PassageQuizCompletion(
+    val request: QuizEvaluationRequest,
+    val result: QuizResultSummary,
+    val savedQuizId: Long,
+)
 
 internal fun generatedRecord(
     request: QuizGenerationRequest,

@@ -39,6 +39,22 @@ abstract class MaterialDao {
     @Query("SELECT * FROM passages WHERE id = :passageId")
     abstract suspend fun getPassage(passageId: Long): PassageEntity?
 
+    @Query(
+        """
+        UPDATE materials
+        SET summary_markdown = :markdown,
+            summary_model_id = :modelId,
+            summarized_at_epoch_ms = :summarizedAtEpochMs
+        WHERE id = :materialId AND summary_markdown IS NULL
+        """,
+    )
+    abstract suspend fun saveSummaryOnce(
+        materialId: Long,
+        markdown: String,
+        modelId: String,
+        summarizedAtEpochMs: Long,
+    ): Int
+
     @Delete
     abstract suspend fun delete(material: MaterialEntity)
 }

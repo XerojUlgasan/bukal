@@ -22,6 +22,11 @@ data class QuizEvaluationUiState(
     val explanationErrors: Map<String, String> = emptyMap(),
 )
 
+data class PassageQuizEvaluation(
+    val request: QuizEvaluationRequest,
+    val savedQuizId: Long,
+)
+
 class QuizEvaluationViewModel(application: Application) : AndroidViewModel(application) {
     private val database = BukalDatabase.create(application)
     private val persistenceRepository = QuizPersistenceRepository(database)
@@ -39,15 +44,27 @@ class QuizEvaluationViewModel(application: Application) : AndroidViewModel(appli
     private var explanationJob: Job? = null
     val uiState: StateFlow<QuizEvaluationUiState> = mutableUiState.asStateFlow()
 
-    fun evaluate(request: QuizEvaluationRequest, savedQuizId: Long? = null) {
+    fun evaluate(quizSetId: Long, requests: List<PassageQuizEvaluation>) {
         if (evaluationJob?.isActive == true) return
+        require(requests.isNotEmpty()) { "There are no passage quizzes to check." }
         explanationJob?.cancel()
         evaluationJob = viewModelScope.launch {
             mutableUiState.value = QuizEvaluationUiState(isChecking = true)
             try {
-                val result = evaluator.evaluate(request)
+                val passageResults = requests.map { passageQuiz ->
+                    evaluator.evaluate(passageQuiz.request)
+                }
                 try {
-                    persistenceRepository.saveCompleted(request, result, savedQuizId)
+                    persistenceRepository.saveCompleted(
+                        quizSetId = quizSetId,
+                        completions = requests.zip(passageResults).map { (passageQuiz, result) ->
+                            PassageQuizCompletion(
+                                request = passageQuiz.request,
+                                result = result,
+                                savedQuizId = passageQuiz.savedQuizId,
+                            )
+                        },
+                    )
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: Exception) {
@@ -56,7 +73,9 @@ class QuizEvaluationViewModel(application: Application) : AndroidViewModel(appli
                         error,
                     )
                 }
-                mutableUiState.value = QuizEvaluationUiState(result = result)
+                mutableUiState.value = QuizEvaluationUiState(
+                    result = QuizResultSummary(passageResults.flatMap(QuizResultSummary::items)),
+                )
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {

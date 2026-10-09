@@ -18,17 +18,22 @@ The model receives only source material as its generation user message: the sele
 
 ## Quiz Configuration
 
-Before generation, the learner chooses one or more quiz types. Bukal requests five questions. A completed generation contains one to five questions because an individual slot is skipped after its two retries fail.
+Before generation, the learner selects one to five passages with checkboxes and chooses one or more quiz types. Each passage receives a five-slot target distribution. A newly composed passage quiz contains one to five questions because an individual missing slot is skipped after its two retries fail.
 
-When more than one type is selected, distribute the five requested slots as evenly as possible in the learner's selected order. For example, selecting all five types requests one question of each type. The application must not silently replace a failed type with another type. It continues with the successful slots and reports the failed count.
+Bukal checks every prior attempt for the passage and builds a distinct question pool by type and normalized prompt, preferring the newest copy of a duplicate. For each requested type, it randomly reuses at most that type's target count. Questions of unselected types do not count toward the five-question cap. Bukal generates only the remaining per-type deficits and includes the reused prompts in duplicate checks.
+
+Distribute the five requested slots as evenly as possible in the learner's selected order. For example, selecting all five types requests one question of each type per passage. Selecting multiple choice and fill in the blank requests three of the first selected type and two of the second. The application must not silently replace a missing or failed type with another type. It continues with the reused and successfully generated slots and reports the failed count.
+
+Every Quiz Setup run copies the chosen reusable question content plus generated top-ups into a fresh unanswered passage attempt, then creates a new quiz-set History item. It never overwrites the prior attempts used as its question pool. Selecting an existing History item is a separate exact-retake flow: it clears in-memory responses, reopens those saved questions without type selection or generation, and updates that same History item after completion.
 
 The quiz setup content includes:
 
-- Selected passage and source ID
+- Selected passage count and source IDs
+- Saved-versus-new generation summary
 - Quiz-type selector
-- Up-to-five-question total
+- Up-to-five-questions-per-passage total
 - Short explanation that fill in the blank, identification, and explanation answers are checked locally by AI
-- **Generate Quiz** action
+- **Start Quiz** action
 
 ## Shared Generated-Question Contract
 
@@ -44,6 +49,7 @@ Bukal assigns the five types before generation. The model returns one question a
 ### Multiple Choice
 
 - Exactly four non-empty, unique options
+- If the model returns more than four unique options, keep the matching answer and the first three distractors in their original order instead of retrying
 - Correct answer text that exactly matches one option; Bukal derives the internal answer index
 - One selected option from the learner
 - Correctness checked locally without an AI call
@@ -119,7 +125,13 @@ Use a type-specific answer component while keeping the same question progress an
 
 Do not reveal the correct answer, hidden criteria, or selected source passage before submission when doing so would give away the answer.
 
+For a multi-passage quiz, keep one continuous previous/next flow while showing both the passage position and the question position within that passage. Question and response keys must be namespaced by passage so repeated local IDs such as `q1` cannot overwrite one another.
+
 When the learner submits a quiz containing fill in the blank, identification, or explanation items, show a local **Checking answers...** state while the quiz model evaluates those responses. Multiple choice and true or false should be checked immediately without calling the model.
+
+## Document Flashcards
+
+Passage selection provides a **Flashcards** button for the active material. It opens one read-only card flow containing the currently saved questions from every passage in material order. The front shows the question; tapping the card flips it to its saved answer key, and previous or next navigation returns the next card to its question side. Multiple choice and true or false use the correct option text, open-response types use their reference answer, and quizzes saved by older builds may show their matching pairs. Flashcard review does not generate questions, grade answers, change attempt activity, or require a schema change.
 
 ## Results and Evidence
 
@@ -130,7 +142,9 @@ For each item, show:
 - Correct answer or expected mapping when applicable
 - Deterministic result or local-AI verdict
 - An **Explain** action for AI-evaluated answers, with no explanation generated before it is tapped
-- The original selected passage
+- The original passage for that result item
+
+The score summary combines all selected passage quizzes, but every result item must reopen and explain against its own passage. Completion persists all member attempts and their parent quiz set atomically, so History shows one reusable object for the whole selection and Profile counts one activity unit per completed set.
 
 Clearly present AI-evaluated results as local AI decisions rather than guaranteed truth.
 
@@ -140,11 +154,20 @@ Add a **Profile** page inspired by GitHub's yearly contribution view. It is a lo
 
 ### Activity Definition
 
-- One activity unit equals one completed quiz attempt.
+- One activity unit equals one completed quiz set, whether it contains one passage or five.
 - Store both the completion timestamp and the completion local date in `YYYY-MM-DD` form.
 - A day is active when at least one quiz was completed on that local date.
 - Multiple completed quizzes on the same date increase that day's intensity.
 - Opening the app, importing a file, or abandoning a quiz does not count as activity.
+
+### Daily Streak and Streak Pet
+
+- A local calendar date qualifies for the daily streak only after completed quiz sets on that date contain at least **10 questions whose persisted result is `correct`**.
+- Distinct correct questions accumulate across completed quiz sets on the same date. A copied or retaken question with the same passage, type, and normalized prompt counts at most once that day. Incorrect, unanswered, partially correct, saved, and abandoned questions do not count.
+- Streaks count consecutive qualifying local dates. A streak earned yesterday remains current while today's goal is still in progress, then breaks after a full local date passes without reaching 10 correct answers.
+- The floating fire pet exists only while the learner has a current streak. It appears on Home, History, and Profile, can be dragged within the available screen area, snaps and minimizes to the nearest left or right edge when released, automatically minimizes after seven seconds without interaction, and expands from its current edge when tapped.
+- The pet grows visually at 3, 7, and 14 consecutive qualifying days. If the streak breaks, the pet disappears; reaching 10 correct answers on a later date starts a new streak and returns the pet.
+- Daily correct-answer progress and streak dates are derived from completed quiz sets and their stored question results. Do not add a pet, streak, or daily-counter table.
 
 ### Yearly Heatmap
 
@@ -155,8 +178,8 @@ The profile shows:
 - Month labels and weekday guidance
 - A year selector
 - A legend from **Less** to **More**
-- Current active-day streak
-- Longest active-day streak
+- Current 10-correct daily streak
+- Longest 10-correct daily streak
 - Local achievement previews for concrete quiz-completion and consistency events
 - Progress toward the next quiz-count, streak, or quiz-variety milestone
 
@@ -168,11 +191,11 @@ Use deterministic intensity levels:
 - 3 completed quizzes: level 3
 - 4 or more completed quizzes: level 4
 
-Streaks count consecutive local calendar dates with at least one completed quiz. The heatmap and streaks are derived from saved attempts; do not maintain a separate cloud activity service.
+The heatmap continues to show completed-quiz activity, while streaks use consecutive dates that reached 10 correct answers. Both are derived from saved local quiz sets and question results; do not maintain a separate cloud activity service.
 
 This activity view measures usage consistency only. Do not describe it as mastery, learning quality, intelligence, or academic performance.
 
-Achievement and milestone state is derived from completed local attempts and their stored question types without introducing an account, reward currency, or separate profile table. **First Steps** requires one completed quiz, **Week Builder** requires a seven-day longest streak, and **Quiz Explorer** requires completed attempts covering all five quiz types. Quiz-count and streak milestones show progress toward 50 quizzes in the selected year and a 14-day longest streak.
+Achievement and milestone state is derived from completed local quiz sets and their member question types without introducing an account, reward currency, or separate profile table. **First Steps** requires one completed set, **Week Builder** requires seven consecutive 10-correct days, and **Quiz Explorer** requires completed sets covering all five quiz types. Quiz-count and streak milestones show progress toward 50 quiz sets in the selected year and a 14-day longest streak.
 
 ## Local Semantic Document Search
 
@@ -246,23 +269,26 @@ Do not turn screens into illustrated posters. Avoid giant decorative headings, g
 |---|---|
 | Model setup and management | Standard top bar, short explanation, a variable list of quiz-model cards, one fixed embedding-model card, download size, verified status, quiz-model selection, and install/retry/remove actions. The screen cannot be bypassed until Granite and at least one quiz model pass size and SHA-256 verification. |
 | Home and material import | App bar with compact quiz/embedding model status, local document search with source-linked results, one primary import card, all retained imported lessons, and bottom navigation for Home, History, and Profile. |
-| Passage selection | Material name, scrollable passage previews with source IDs, a single-selection control, and a sticky continue action. |
-| Quiz setup and type selection | Selected-passage summary, five selectable type chips, the five-question distribution, a short local-AI information box, and a sticky generate action. |
+| Passage selection | Material name, prominent **Flashcards** action, scrollable passage previews with source IDs, checkboxes for one to five passages, saved-question status, and a sticky continue action showing the maximum question total. |
+| Document flashcards | Material name, passage label, card position, one tap-to-reveal question-and-answer card, previous/next actions, and an empty state when the material has no saved questions. |
+| File summary | Learner-triggered child screen that either opens the saved Markdown summary or processes every passage once, then presents a readable overview, key-point bullets, and supporting source IDs. It has no regenerate action. |
+| Quiz setup and type selection | Selected-passage count and saved-question summary, five selectable type chips, the per-passage five-question distribution, a short local-AI information box, and a sticky start action. |
 | Quiz generation | Centered indeterminate progress, one short status message, and an optional small pencil or spark doodle. Do not show a fabricated percentage. |
 | Quiz answering | Compact progress bar, quiz-type label, question, type-specific response control, and fixed previous/next actions. Keep decorative elements away from the answer area. |
 | Local-AI answer checking | Simple local-processing state showing that open responses are being checked. Do not imply cloud processing or display fabricated progress. |
 | Results and selected source passage | Score summary followed by expandable result cards. The selected passage opens in a bottom sheet or expandable detail so it does not become another permanent navigation destination. |
-| Attempt history | Chronological list showing one saved or completed quiz per passage with its material, saved/completed date, selected types, latest previous score, highest score, or Ready state. Selecting an item starts a retake with cleared responses. |
+| Attempt history | Chronological list showing one saved or completed quiz set with its material, passage count, question count, saved/completed date, selected types, latest combined score, highest combined score, or Ready state. Selecting an item starts a whole-set retake with cleared responses. |
 | Local profile and yearly activity | Year selector, completed-quiz total, current and longest streak cards, horizontally scrollable yearly heatmap, activity-intensity legend, compact local achievements, and next-milestone progress. |
 
 ### Useful Gamification
 
 Gamification should communicate progress and reward task completion without creating a separate reward economy. Use:
 
-- Five-question progress
+- Passage and question progress
 - Current-question position
 - Subtle completion feedback after submission
-- Completed-quiz activity streaks
+- Ten-correct daily streaks
+- A floating, edge-minimizing fire pet tied to the 10-correct daily streak
 - Yearly activity heatmap
 - Small local achievements tied to completed activity
 - Progress toward explicit quiz-count, streak, and quiz-variety milestones
@@ -320,13 +346,15 @@ Use the reviewed [SQLite schema](sqlite-schema.md) as the entity, relationship, 
 - `materials` stores imported-document metadata.
 - `passages` stores bounded extracted source text.
 - `search_chunks` stores overlapping text, offsets, and one optional embedding per chunk.
-- `attempts` stores one saved generated quiz per passage, its quiz model, generation time, status, latest completion date and score, and highest score.
+- `attempts` stores one prepared quiz per passage, including copied reusable questions and generated top-ups, its quiz model, generation time, status, latest completion date and score, and highest score.
+- `quiz_sets` stores one History/Profile object for one prepared ordered quiz run and its combined latest and highest scores.
+- `quiz_set_items` links a quiz set to its prepared attempts in passage order.
 - `questions` stores generated content, hidden answer data, learner response, result, and points in one row. On-demand explanations are transient.
 - `matching_pairs` is retained only so quizzes saved by older builds can still be reopened; new quizzes do not write matching rows.
 
-Keep this six-table shape flat. Do not add separate draft, quiz, one-to-one response or evaluation, accepted-answer, selected-types, profile, or streak tables. Save each generated question graph in one transaction. First completion and later retakes update that same graph atomically, replacing learner responses and the latest score while retaining the highest score. Replace a passage's search chunks in one indexing transaction.
+Keep this eight-table shape focused. Do not add a separate question-bank, response, evaluation, accepted-answer, selected-types, profile, streak, or per-run snapshot table. Save each freshly composed question graph in one transaction. Once all selected quizzes are ready, create its ordered quiz set. First completion and exact History retakes update the parent set and every member graph atomically, replacing learner responses and the latest combined score while retaining the highest combined score. Replace a passage's search chunks in one indexing transaction.
 
-Index generation time for History and completion local date for selected-year totals and heatmap queries. Derive activity and streaks only from attempts whose status is `completed` rather than maintaining a separate activity database or duplicating daily counters.
+Index quiz-set creation time for History and set completion local date for selected-year totals and heatmap queries. Derive heatmap activity from completed quiz sets and derive streak qualification by counting their `correct` question results per local date rather than maintaining a separate activity database or duplicating daily counters.
 
 Use DataStore only for small application settings, including the selected quiz-model ID. Quiz-model and fixed embedding-model identities come from the bundled catalog, while downloaded models and retained original material files stay in app-specific file storage; do not store whole model or document files in SQLite. Granite is fixed and is never changed by the quiz-model selection.
 

@@ -2,6 +2,12 @@ package com.example.bukal.ui.navigation
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -18,25 +24,36 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.example.bukal.ui.checking.CheckingScreen
 import com.example.bukal.ui.checking.CheckingUiState
 import com.example.bukal.ai.QuestionAnswer
+import com.example.bukal.ai.FileSummaryViewModel
+import com.example.bukal.ai.PassageQuiz
 import com.example.bukal.ai.QuizEvaluationRequest
 import com.example.bukal.ai.QuizEvaluationViewModel
 import com.example.bukal.ai.QuizExplanationRequest
 import com.example.bukal.ai.QuizGenerationRequest
+import com.example.bukal.ai.QuizGenerationUiState
 import com.example.bukal.ai.QuizGenerationViewModel
+import com.example.bukal.ai.QuizGenerator
+import com.example.bukal.ai.PassageQuizEvaluation
 import com.example.bukal.ai.QuizResultSummary
 import com.example.bukal.ai.QuizResultVerdict
 import com.example.bukal.ai.toQuizQuestions
+import com.example.bukal.ai.withPassageScopedIds
 import com.example.bukal.ui.components.MainDestination
+import com.example.bukal.ui.components.StreakPet
 import com.example.bukal.ui.generating.GeneratingScreen
 import com.example.bukal.ui.generating.GeneratingUiState
+import com.example.bukal.ui.flashcards.FlashcardsScreen
+import com.example.bukal.ui.flashcards.FlashcardsViewModel
 import com.example.bukal.ui.history.HistoryScreen
 import com.example.bukal.ui.history.HistoryViewModel
 import com.example.bukal.ui.home.HomeScreen
@@ -59,6 +76,7 @@ import com.example.bukal.R
 import com.example.bukal.ui.passageselection.PassageSelectionScreen
 import com.example.bukal.ui.passageselection.PassagePreview
 import com.example.bukal.ui.passageselection.PassageSelectionUiState
+import com.example.bukal.ui.passageselection.togglePassageSelection
 import com.example.bukal.ui.profile.ProfileScreen
 import com.example.bukal.ui.profile.ProfileViewModel
 import com.example.bukal.ui.quiz.QuizScreen
@@ -73,6 +91,7 @@ import com.example.bukal.ui.results.ResultStatus
 import com.example.bukal.ui.results.ResultsUiState
 import com.example.bukal.ui.settings.SettingsScreen
 import com.example.bukal.ui.settings.SettingsUiState
+import com.example.bukal.ui.summary.SummaryScreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -83,6 +102,8 @@ private enum class AppDestination(val route: String) {
     MODEL_SETUP("model-setup"),
     HOME("home"),
     PASSAGE_SELECTION("passage-selection"),
+    SUMMARY("summary"),
+    FLASHCARDS("flashcards"),
     QUIZ_SETUP("quiz-setup"),
     GENERATING("generating"),
     QUIZ("quiz"),
@@ -100,6 +121,7 @@ fun BukalApp(modifier: Modifier = Modifier) {
     val libraryState by libraryViewModel.uiState.collectAsState()
     val quizGenerationViewModel: QuizGenerationViewModel = viewModel()
     val quizGenerationState by quizGenerationViewModel.uiState.collectAsState()
+    val cachedQuizQuestionCounts by quizGenerationViewModel.cachedQuizQuestionCounts.collectAsState()
     val quizEvaluationViewModel: QuizEvaluationViewModel = viewModel()
     val quizEvaluationState by quizEvaluationViewModel.uiState.collectAsState()
     val historyViewModel: HistoryViewModel = viewModel()
@@ -116,7 +138,7 @@ fun BukalApp(modifier: Modifier = Modifier) {
     var modelState by remember { mutableStateOf(ModelInstallationSnapshot.checking()) }
     var modelActionError by remember { mutableStateOf<String?>(null) }
     var activeMaterialId by rememberSaveable { mutableStateOf<Long?>(null) }
-    var selectedPassageId by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedPassageIds by rememberSaveable { mutableStateOf(emptyList<String>()) }
     var activeQuizModelId by rememberSaveable { mutableStateOf<String?>(null) }
     var activeQuizMaterialName by rememberSaveable { mutableStateOf<String?>(null) }
     val selectedQuizTypes = remember {
@@ -126,7 +148,7 @@ fun BukalApp(modifier: Modifier = Modifier) {
     val selectedOptions = remember { mutableStateMapOf<String, Int>() }
     val textResponses = remember { mutableStateMapOf<String, String>() }
     val matchingSelections = remember { mutableStateMapOf<String, String>() }
-    var activeGenerationRequest by remember { mutableStateOf<QuizGenerationRequest?>(null) }
+    var activeGenerationRequests by remember { mutableStateOf(emptyList<QuizGenerationRequest>()) }
     var vectorSearchQuery by rememberSaveable { mutableStateOf("") }
     var resultsState by remember { mutableStateOf(ResultsUiState.mock) }
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -199,7 +221,7 @@ fun BukalApp(modifier: Modifier = Modifier) {
     LaunchedEffect(libraryState.newlyImportedMaterialId) {
         val importedId = libraryState.newlyImportedMaterialId ?: return@LaunchedEffect
         activeMaterialId = importedId
-        selectedPassageId = null
+        selectedPassageIds = emptyList()
         libraryViewModel.consumeNewImport()
         navController.navigate(AppDestination.PASSAGE_SELECTION.route) {
             launchSingleTop = true
@@ -222,11 +244,22 @@ fun BukalApp(modifier: Modifier = Modifier) {
         return
     }
 
-    NavHost(
-        navController = navController,
-        startDestination = AppDestination.HOME.route,
-        modifier = modifier,
-    ) {
+    val currentBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = currentBackStackEntry?.destination?.route
+    val petRoutes = remember {
+        setOf(
+            AppDestination.HOME.route,
+            AppDestination.HISTORY.route,
+            AppDestination.PROFILE.route,
+        )
+    }
+
+    Box(modifier = modifier.fillMaxSize()) {
+        NavHost(
+            navController = navController,
+            startDestination = AppDestination.HOME.route,
+            modifier = Modifier.fillMaxSize(),
+        ) {
         composable(AppDestination.MODEL_SETUP.route) {
             ModelSetupScreen(
                 state = modelState,
@@ -258,12 +291,19 @@ fun BukalApp(modifier: Modifier = Modifier) {
                         )
                     },
                     streakLabel = if (profileState.currentStreakDays == 0) {
-                        stringResource(R.string.home_start_streak)
+                        pluralStringResource(
+                            R.plurals.home_pet_progress_no_streak,
+                            profileState.todayCorrectAnswers,
+                            profileState.todayCorrectAnswers.coerceAtMost(profileState.dailyCorrectGoal),
+                            profileState.dailyCorrectGoal,
+                        )
                     } else {
                         pluralStringResource(
-                            R.plurals.home_study_streak,
+                            R.plurals.home_pet_streak_progress,
                             profileState.currentStreakDays,
                             profileState.currentStreakDays,
+                            profileState.todayCorrectAnswers.coerceAtMost(profileState.dailyCorrectGoal),
+                            profileState.dailyCorrectGoal,
                         )
                     },
                     isImporting = libraryState.importStatus == ImportStatus.IMPORTING,
@@ -287,7 +327,7 @@ fun BukalApp(modifier: Modifier = Modifier) {
                 onMaterialClick = { materialId ->
                     libraryState.materials.firstOrNull { it.material.id == materialId }?.let {
                         activeMaterialId = materialId
-                        selectedPassageId = null
+                        selectedPassageIds = emptyList()
                         navController.navigate(AppDestination.PASSAGE_SELECTION.route)
                     }
                 },
@@ -299,6 +339,9 @@ fun BukalApp(modifier: Modifier = Modifier) {
             )
         }
         composable(AppDestination.PASSAGE_SELECTION.route) {
+            LaunchedEffect(activeMaterial?.material?.id) {
+                activeMaterial?.let { quizGenerationViewModel.loadCachedQuizQuestionCounts(it.passages) }
+            }
             val selectionState = activeMaterial?.let { imported ->
                 PassageSelectionUiState(
                     materialName = imported.material.displayName,
@@ -307,33 +350,101 @@ fun BukalApp(modifier: Modifier = Modifier) {
                             id = passage.sourceId,
                             title = passage.title ?: passage.sourceId,
                             excerpt = passage.content.replace('\n', ' '),
+                            savedQuestionCount = cachedQuizQuestionCounts[passage.id],
                         )
                     },
-                    selectedPassageId = selectedPassageId,
+                    selectedPassageIds = selectedPassageIds.toSet(),
                 )
             } ?: PassageSelectionUiState(
                 materialName = "No imported lesson",
                 passages = emptyList(),
-                selectedPassageId = null,
+                selectedPassageIds = emptySet(),
             )
             PassageSelectionScreen(
                 state = selectionState,
                 onBackClick = navController::popBackStack,
-                onPassageSelected = { selectedPassageId = it },
+                onFlashcardsClick = {
+                    if (activeMaterial != null) {
+                        navController.navigate(AppDestination.FLASHCARDS.route)
+                    }
+                },
+                onSummaryClick = {
+                    if (activeMaterial != null && selectedQuizModel != null) {
+                        navController.navigate(AppDestination.SUMMARY.route) {
+                            launchSingleTop = true
+                        }
+                    }
+                },
+                onPassageSelected = { passageId ->
+                    selectedPassageIds = togglePassageSelection(
+                        selectedIds = selectedPassageIds.toSet(),
+                        passageId = passageId,
+                    ).toList()
+                },
                 onContinueClick = {
-                    if (selectedPassageId != null) {
+                    if (selectedPassageIds.isNotEmpty()) {
                         navController.navigate(AppDestination.QUIZ_SETUP.route)
                     }
                 },
                 onDestinationSelected = onMainDestinationSelected,
             )
         }
+        composable(AppDestination.SUMMARY.route) {
+            val summaryViewModel: FileSummaryViewModel = viewModel()
+            val summaryState by summaryViewModel.uiState.collectAsState()
+            LaunchedEffect(activeMaterial?.material?.id, selectedQuizModel?.id) {
+                val material = activeMaterial ?: return@LaunchedEffect
+                val model = selectedQuizModel ?: return@LaunchedEffect
+                summaryViewModel.open(material.material.id, model)
+            }
+            SummaryScreen(
+                state = summaryState,
+                onBackClick = {
+                    summaryViewModel.cancel()
+                    navController.popBackStack()
+                },
+                onRetryClick = summaryViewModel::retry,
+            )
+        }
+        composable(AppDestination.FLASHCARDS.route) {
+            val flashcardsViewModel: FlashcardsViewModel = viewModel()
+            val flashcardsState by flashcardsViewModel.uiState.collectAsState()
+            LaunchedEffect(activeMaterial?.material?.id) {
+                activeMaterial?.let { material ->
+                    flashcardsViewModel.load(
+                        materialId = material.material.id,
+                        materialName = material.material.displayName,
+                    )
+                }
+            }
+            FlashcardsScreen(
+                state = flashcardsState,
+                onBackClick = navController::popBackStack,
+                onCardClick = flashcardsViewModel::toggleRevealed,
+                onPreviousClick = flashcardsViewModel::previous,
+                onNextClick = flashcardsViewModel::next,
+            )
+        }
         composable(AppDestination.QUIZ_SETUP.route) {
-            val passage = activeMaterial?.passages?.firstOrNull { it.sourceId == selectedPassageId }
+            val passages = activeMaterial?.passages.orEmpty().filter {
+                it.sourceId in selectedPassageIds
+            }
             QuizSetupScreen(
                 state = QuizSetupUiState.mock.copy(
-                    passageId = passage?.sourceId ?: QuizSetupUiState.mock.passageId,
-                    passageTitle = passage?.title ?: QuizSetupUiState.mock.passageTitle,
+                    materialName = activeMaterial?.material?.displayName
+                        ?: QuizSetupUiState.mock.materialName,
+                    passageId = passages.joinToString(", ") { it.sourceId },
+                    passageTitle = if (passages.size == 1) {
+                        passages.single().title ?: passages.single().sourceId
+                    } else {
+                        pluralStringResource(
+                            R.plurals.quiz_setup_selected_passages,
+                            passages.size,
+                            passages.size,
+                        )
+                    },
+                    selectedPassageCount = passages.size,
+                    cachedPassageCount = passages.count { it.id in cachedQuizQuestionCounts },
                     selectedTypes = selectedQuizTypes.toList(),
                 ),
                 onBackClick = navController::popBackStack,
@@ -345,39 +456,50 @@ fun BukalApp(modifier: Modifier = Modifier) {
                     }
                 },
                 onGenerateClick = {
-                    val activePassage = passage
                     val activeModel = selectedQuizModel
-                    if (selectedQuizTypes.isNotEmpty() && activePassage != null && activeModel != null) {
+                    if (passages.isNotEmpty() && activeModel != null && selectedQuizTypes.isNotEmpty()) {
                         activeQuizModelId = activeModel.id
-                        activeQuizMaterialName = activeMaterial.material.displayName
+                        activeQuizMaterialName = activeMaterial?.material?.displayName
                         currentQuestion = 1
                         selectedOptions.clear()
                         textResponses.clear()
                         matchingSelections.clear()
-                        val request = QuizGenerationRequest(
-                            model = activeModel,
-                            passage = activePassage,
-                            typeCounts = calculateQuestionDistribution(selectedQuizTypes)
-                                .associateTo(linkedMapOf()) { it.type.questionType to it.count },
-                        )
-                        activeGenerationRequest = request
+                        val typeCounts = calculateQuestionDistribution(selectedQuizTypes)
+                            .associateTo(linkedMapOf()) { it.type.questionType to it.count }
+                        val requests = passages.map { passage ->
+                            QuizGenerationRequest(
+                                model = activeModel,
+                                passage = passage,
+                                typeCounts = typeCounts,
+                            )
+                        }
+                        activeGenerationRequests = requests
                         quizGenerationViewModel.clearQuiz()
                         quizEvaluationViewModel.clearResult()
-                        quizGenerationViewModel.generate(request)
+                        quizGenerationViewModel.generate(requests)
                         navController.navigate(AppDestination.GENERATING.route)
                     }
                 },
             )
         }
         composable(AppDestination.GENERATING.route) {
-            LaunchedEffect(quizGenerationState.questions, quizGenerationState.isGenerating) {
-                if (quizGenerationState.isGenerating || quizGenerationState.questions.isEmpty()) {
+            LaunchedEffect(
+                quizGenerationState.questions,
+                quizGenerationState.isGenerating,
+                quizGenerationState.errorMessage,
+            ) {
+                if (quizGenerationState.isGenerating || quizGenerationState.questions.isEmpty() ||
+                    quizGenerationState.errorMessage != null
+                ) {
                     return@LaunchedEffect
                 }
                 navController.navigate(AppDestination.QUIZ.route) {
                     popUpTo(AppDestination.GENERATING.route) { inclusive = true }
                 }
             }
+            val currentRequest = activeGenerationRequests.getOrNull(
+                quizGenerationState.currentPassageNumber - 1,
+            )
             GeneratingScreen(
                 state = GeneratingUiState.mock.copy(
                     modelName = modelState.models
@@ -386,9 +508,12 @@ fun BukalApp(modifier: Modifier = Modifier) {
                         ?.displayName
                         ?: selectedQuizModel?.displayName
                         ?: GeneratingUiState.mock.modelName,
-                    passageId = selectedPassageId ?: GeneratingUiState.mock.passageId,
-                    passageTitle = activeGenerationRequest?.passage?.title
+                    passageId = currentRequest?.passage?.sourceId
+                        ?: GeneratingUiState.mock.passageId,
+                    passageTitle = currentRequest?.passage?.title
                         ?: GeneratingUiState.mock.passageTitle,
+                    currentPassageNumber = quizGenerationState.currentPassageNumber,
+                    totalPassages = quizGenerationState.totalPassages,
                     currentQuestionNumber = quizGenerationState.currentQuestionNumber,
                     totalQuestions = quizGenerationState.totalQuestions,
                     errorMessage = quizGenerationState.errorMessage,
@@ -402,7 +527,9 @@ fun BukalApp(modifier: Modifier = Modifier) {
                     navController.popBackStack()
                 },
                 onRetryClick = {
-                    activeGenerationRequest?.let(quizGenerationViewModel::generate)
+                    if (activeGenerationRequests.isNotEmpty()) {
+                        quizGenerationViewModel.generate(activeGenerationRequests)
+                    }
                 },
             )
         }
@@ -410,6 +537,13 @@ fun BukalApp(modifier: Modifier = Modifier) {
             val questions = quizGenerationState.questions
             val question = questions.getOrNull(currentQuestion - 1)
             val answer = question?.answer
+            val passageQuizIndex = quizGenerationState.passageQuizzes.indexOfFirst { passageQuiz ->
+                passageQuiz.questions.any { it.id == question?.id }
+            }
+            val passageQuiz = quizGenerationState.passageQuizzes.getOrNull(passageQuizIndex)
+            val passageQuestionIndex = passageQuiz?.questions?.indexOfFirst {
+                it.id == question?.id
+            } ?: -1
             QuizScreen(
                 state = if (question == null) {
                     QuizUiState.mock
@@ -420,6 +554,10 @@ fun BukalApp(modifier: Modifier = Modifier) {
                         passageId = question.sourceId,
                         currentQuestion = currentQuestion,
                         totalQuestions = questions.size,
+                        currentPassage = passageQuizIndex + 1,
+                        totalPassages = quizGenerationState.passageQuizzes.size,
+                        currentPassageQuestion = passageQuestionIndex + 1,
+                        totalPassageQuestions = passageQuiz?.questions?.size ?: questions.size,
                         questionType = question.type,
                         prompt = question.prompt,
                         options = (answer as? QuestionAnswer.MultipleChoice)?.options.orEmpty(),
@@ -455,19 +593,15 @@ fun BukalApp(modifier: Modifier = Modifier) {
                     if (currentQuestion < questions.size) {
                         currentQuestion += 1
                     } else {
-                        activeGenerationRequest?.let { generationRequest ->
+                        val evaluations = quizGenerationState.toPassageEvaluations(
+                            selectedOptions = selectedOptions,
+                            textResponses = textResponses,
+                            matchingSelections = matchingSelections,
+                        )
+                        val quizSetId = quizGenerationState.quizSetId
+                        if (evaluations.isNotEmpty() && quizSetId != null) {
                             quizEvaluationViewModel.clearResult()
-                            quizEvaluationViewModel.evaluate(
-                                QuizEvaluationRequest(
-                                    model = generationRequest.model,
-                                    passage = generationRequest.passage,
-                                    questions = questions,
-                                    selectedOptions = selectedOptions.toMap(),
-                                    textResponses = textResponses.toMap(),
-                                    matchingSelections = matchingSelections.toMap(),
-                                ),
-                                savedQuizId = quizGenerationState.savedQuizId,
-                            )
+                            quizEvaluationViewModel.evaluate(quizSetId, evaluations)
                             navController.navigate(AppDestination.CHECKING.route)
                         }
                     }
@@ -479,11 +613,13 @@ fun BukalApp(modifier: Modifier = Modifier) {
             val writtenAnswerCount = questions.count { it.answer is QuestionAnswer.OpenResponse }
             LaunchedEffect(quizEvaluationState.result) {
                 val result = quizEvaluationState.result ?: return@LaunchedEffect
-                val passage = activeGenerationRequest?.passage ?: return@LaunchedEffect
                 resultsState = result.toResultsUiState(
                     materialName = activeQuizMaterialName.orEmpty(),
-                    passage = passage,
+                    passages = quizGenerationState.passageQuizzes.associate {
+                        it.request.passage.sourceId to it.request.passage
+                    },
                 )
+                profileViewModel.refresh()
                 navController.navigate(AppDestination.RESULTS.route) {
                     popUpTo(AppDestination.QUIZ.route) { inclusive = true }
                 }
@@ -495,19 +631,14 @@ fun BukalApp(modifier: Modifier = Modifier) {
                     errorMessage = quizEvaluationState.errorMessage,
                 ),
                 onRetryClick = {
-                    val generationRequest = activeGenerationRequest
-                    if (generationRequest != null) {
-                        quizEvaluationViewModel.evaluate(
-                            QuizEvaluationRequest(
-                                model = generationRequest.model,
-                                passage = generationRequest.passage,
-                                questions = questions,
-                                selectedOptions = selectedOptions.toMap(),
-                                textResponses = textResponses.toMap(),
-                                matchingSelections = matchingSelections.toMap(),
-                            ),
-                            savedQuizId = quizGenerationState.savedQuizId,
-                        )
+                    val evaluations = quizGenerationState.toPassageEvaluations(
+                        selectedOptions = selectedOptions,
+                        textResponses = textResponses,
+                        matchingSelections = matchingSelections,
+                    )
+                    val quizSetId = quizGenerationState.quizSetId
+                    if (evaluations.isNotEmpty() && quizSetId != null) {
+                        quizEvaluationViewModel.evaluate(quizSetId, evaluations)
                     }
                 },
             )
@@ -527,15 +658,17 @@ fun BukalApp(modifier: Modifier = Modifier) {
                 explainingQuestionId = quizEvaluationState.explainingQuestionId,
                 explanationErrors = quizEvaluationState.explanationErrors,
                 onExplainClick = { itemId ->
-                    val generationRequest = activeGenerationRequest
                     val result = quizEvaluationState.result?.items?.firstOrNull {
                         it.question.id == itemId
                     }
-                    if (generationRequest != null && result != null) {
+                    val passageQuiz = quizGenerationState.passageQuizzes.firstOrNull {
+                        it.request.passage.sourceId == result?.question?.sourceId
+                    }
+                    if (passageQuiz != null && result != null) {
                         quizEvaluationViewModel.explain(
                             QuizExplanationRequest(
-                                model = generationRequest.model,
-                                passage = generationRequest.passage,
+                                model = passageQuiz.request.model,
+                                passage = passageQuiz.request.passage,
                                 result = result,
                             ),
                         )
@@ -556,12 +689,14 @@ fun BukalApp(modifier: Modifier = Modifier) {
                 onMenuClick = {
                     navController.navigate(AppDestination.MODEL_SETUP.route)
                 },
-                onAttemptClick = { attemptId ->
+                onQuizSetClick = { quizSetId ->
                     coroutineScope.launch {
-                        runCatching { historyViewModel.getSavedQuiz(attemptId) }
-                            .onSuccess { savedQuiz ->
+                        runCatching { historyViewModel.getSavedQuizSet(quizSetId) }
+                            .onSuccess { savedSet ->
+                                val savedModelIds = savedSet.quizzes
+                                    .mapTo(mutableSetOf()) { it.attempt.quizModelId }
                                 val retakeModel = modelState.models.firstOrNull {
-                                    it.spec.id == savedQuiz.attempt.quizModelId &&
+                                    it.spec.id in savedModelIds &&
                                         it.status == ModelInstallStatus.Installed
                                 }?.spec ?: selectedQuizModel
                                 if (retakeModel == null) {
@@ -570,23 +705,33 @@ fun BukalApp(modifier: Modifier = Modifier) {
                                     )
                                     return@onSuccess
                                 }
-                                val questions = savedQuiz.toQuizQuestions()
-                                activeMaterialId = savedQuiz.passage.materialId
-                                selectedPassageId = savedQuiz.passage.sourceId
+                                val passageQuizzes = savedSet.quizzes.map { savedQuiz ->
+                                    val questions = savedQuiz.toQuizQuestions()
+                                    val request = QuizGenerationRequest(
+                                        model = retakeModel,
+                                        passage = savedQuiz.passage,
+                                        typeCounts = questions.groupingBy { it.type }.eachCount(),
+                                    )
+                                    PassageQuiz(
+                                        request = request,
+                                        questions = questions.withPassageScopedIds(savedQuiz.passage.id),
+                                        failedQuestionCount = QuizGenerator.QUESTION_COUNT - questions.size,
+                                        savedQuizId = savedQuiz.attempt.id,
+                                    )
+                                }
+                                val firstQuiz = savedSet.quizzes.first()
+                                activeMaterialId = firstQuiz.passage.materialId
+                                selectedPassageIds = savedSet.quizzes.map { it.passage.sourceId }
                                 activeQuizModelId = retakeModel.id
-                                activeQuizMaterialName = savedQuiz.materialName
+                                activeQuizMaterialName = firstQuiz.materialName
                                 currentQuestion = 1
                                 selectedOptions.clear()
                                 textResponses.clear()
                                 matchingSelections.clear()
-                                activeGenerationRequest = QuizGenerationRequest(
-                                    model = retakeModel,
-                                    passage = savedQuiz.passage,
-                                    typeCounts = questions.groupingBy { it.type }.eachCount(),
-                                )
-                                quizGenerationViewModel.useSavedQuiz(
-                                    questions = questions,
-                                    savedDraftId = savedQuiz.attempt.id,
+                                activeGenerationRequests = passageQuizzes.map(PassageQuiz::request)
+                                quizGenerationViewModel.useSavedQuizSet(
+                                    quizSetId = savedSet.quizSet.id,
+                                    passageQuizzes = passageQuizzes,
                                 )
                                 quizEvaluationViewModel.clearResult()
                                 navController.navigate(AppDestination.QUIZ.route)
@@ -614,31 +759,62 @@ fun BukalApp(modifier: Modifier = Modifier) {
                 onDestinationSelected = onMainDestinationSelected,
             )
         }
-        composable(AppDestination.SETTINGS.route) {
-            SettingsScreen(
-                state = SettingsUiState(
-                    query = vectorSearchQuery,
-                    searchStatus = libraryState.vectorSearchStatus,
-                    results = libraryState.vectorSearchResults,
-                    errorMessage = libraryState.vectorSearchError,
-                ),
-                onQueryChange = { vectorSearchQuery = it },
-                onSearchClick = { libraryViewModel.searchByMeaning(vectorSearchQuery) },
-                onManageModelsClick = {
-                    navController.navigate(AppDestination.MODEL_SETUP.route)
-                },
-                onBackClick = navController::popBackStack,
+            composable(AppDestination.SETTINGS.route) {
+                SettingsScreen(
+                    state = SettingsUiState(
+                        query = vectorSearchQuery,
+                        searchStatus = libraryState.vectorSearchStatus,
+                        results = libraryState.vectorSearchResults,
+                        errorMessage = libraryState.vectorSearchError,
+                    ),
+                    onQueryChange = { vectorSearchQuery = it },
+                    onSearchClick = { libraryViewModel.searchByMeaning(vectorSearchQuery) },
+                    onManageModelsClick = {
+                        navController.navigate(AppDestination.MODEL_SETUP.route)
+                    },
+                    onBackClick = navController::popBackStack,
+                )
+            }
+        }
+        if (currentRoute in petRoutes) {
+            StreakPet(
+                streakDays = profileState.currentStreakDays,
+                correctAnswersToday = profileState.todayCorrectAnswers,
+                dailyGoal = profileState.dailyCorrectGoal,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .windowInsetsPadding(WindowInsets.safeDrawing)
+                    .padding(bottom = 72.dp),
             )
         }
     }
 }
 
+private fun QuizGenerationUiState.toPassageEvaluations(
+    selectedOptions: Map<String, Int>,
+    textResponses: Map<String, String>,
+    matchingSelections: Map<String, String>,
+): List<PassageQuizEvaluation> = passageQuizzes.map { passageQuiz ->
+    PassageQuizEvaluation(
+        request = QuizEvaluationRequest(
+            model = passageQuiz.request.model,
+            passage = passageQuiz.request.passage,
+            questions = passageQuiz.questions,
+            selectedOptions = selectedOptions,
+            textResponses = textResponses,
+            matchingSelections = matchingSelections,
+        ),
+        savedQuizId = passageQuiz.savedQuizId,
+    )
+}
+
 private fun QuizResultSummary.toResultsUiState(
     materialName: String,
-    passage: com.example.bukal.data.local.PassageEntity,
+    passages: Map<String, com.example.bukal.data.local.PassageEntity>,
 ): ResultsUiState {
     val expandedId = items.firstOrNull { it.verdict != QuizResultVerdict.CORRECT }?.question?.id
     val resultItems = items.map { item ->
+        val passage = passages[item.question.sourceId]
         ResultItem(
             id = item.question.id,
             questionType = item.question.type,
@@ -652,6 +828,8 @@ private fun QuizResultSummary.toResultsUiState(
             learnerAnswer = item.learnerAnswer,
             expectedAnswer = item.expectedAnswer,
             sourceId = item.question.sourceId,
+            passageTitle = passage?.title ?: passage?.sourceId,
+            passageContent = passage?.content,
             expanded = item.question.id == expandedId,
         )
     }
@@ -667,9 +845,6 @@ private fun QuizResultSummary.toResultsUiState(
         message = message,
         materialName = materialName,
         questionCount = items.size,
-        passageTitle = passage.title ?: passage.sourceId,
-        passageSourceId = passage.sourceId,
-        passageContent = passage.content,
         items = resultItems,
     )
 }

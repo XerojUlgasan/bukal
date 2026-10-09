@@ -82,6 +82,8 @@ data class QuizSetupUiState(
     val materialName: String,
     val passageId: String,
     val passageTitle: String,
+    val selectedPassageCount: Int,
+    val cachedPassageCount: Int,
     val selectedTypes: List<QuizType>,
 ) {
     companion object {
@@ -89,6 +91,8 @@ data class QuizSetupUiState(
             materialName = "Philippine History.txt",
             passageId = "TXT-P002",
             passageTitle = "The Malolos Constitution",
+            selectedPassageCount = 1,
+            cachedPassageCount = 0,
             selectedTypes = QuizType.entries,
         )
     }
@@ -124,7 +128,7 @@ fun QuizSetupScreen(
         contentWindowInsets = WindowInsets.safeDrawing,
         bottomBar = {
             GenerateQuizBar(
-                enabled = state.selectedTypes.isNotEmpty(),
+                enabled = state.selectedPassageCount > 0 && state.selectedTypes.isNotEmpty(),
                 onGenerateClick = onGenerateClick,
             )
         },
@@ -140,7 +144,7 @@ fun QuizSetupScreen(
                 Spacer(modifier = Modifier.height(14.dp))
                 SelectedPassageCard(state = state)
                 Spacer(modifier = Modifier.height(22.dp))
-                QuestionTypeHeader()
+                QuestionTypeHeader(selectedPassageCount = state.selectedPassageCount)
                 Spacer(modifier = Modifier.height(14.dp))
                 QuizTypeGrid(
                     selectedTypes = state.selectedTypes,
@@ -230,13 +234,23 @@ private fun SelectedPassageCard(state: QuizSetupUiState) {
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                Spacer(modifier = Modifier.height(3.dp))
+                Text(
+                    text = stringResource(
+                        R.string.quiz_setup_cache_summary,
+                        state.cachedPassageCount,
+                        state.selectedPassageCount - state.cachedPassageCount,
+                    ),
+                    color = BukalMutedText,
+                    style = MaterialTheme.typography.labelMedium,
+                )
             }
         }
     }
 }
 
 @Composable
-private fun QuestionTypeHeader() {
+private fun QuestionTypeHeader(selectedPassageCount: Int) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -250,7 +264,10 @@ private fun QuestionTypeHeader() {
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = stringResource(R.string.quiz_setup_types_subtitle),
+                text = stringResource(
+                    R.string.quiz_setup_types_subtitle,
+                    selectedPassageCount * QuizQuestionCount,
+                ),
                 color = BukalMutedText,
                 style = MaterialTheme.typography.bodyMedium,
             )

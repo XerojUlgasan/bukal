@@ -24,6 +24,21 @@ data class SavedQuizRecord(
     val questions: List<QuestionRecord>,
 )
 
+data class SavedQuizSetRecord(
+    val quizSet: QuizSetEntity,
+    val quizzes: List<SavedQuizRecord>,
+)
+
+data class CompletedQuizSetRecord(
+    val quizSet: QuizSetEntity,
+    val attempts: List<CompletedQuizSetAttempt>,
+)
+
+data class CompletedQuizSetAttempt(
+    val attemptId: Long,
+    val record: CompletedAttemptRecord,
+)
+
 data class SearchCandidate(
     @ColumnInfo(name = "chunk_id")
     val chunkId: Long,
@@ -41,19 +56,17 @@ data class SearchCandidate(
     val embeddingVector: ByteArray,
 )
 
-data class AttemptHistoryRow(
-    @ColumnInfo(name = "attempt_id")
-    val attemptId: Long,
+data class QuizSetHistoryRow(
+    @ColumnInfo(name = "quiz_set_id")
+    val quizSetId: Long,
     @ColumnInfo(name = "material_name")
     val materialName: String,
     @ColumnInfo(name = "passage_title")
     val passageTitle: String?,
-    @ColumnInfo(name = "source_id")
-    val sourceId: String,
-    @ColumnInfo(name = "quiz_model_id")
-    val quizModelId: String,
-    @ColumnInfo(name = "generated_at_epoch_ms")
-    val generatedAtEpochMs: Long,
+    @ColumnInfo(name = "passage_count")
+    val passageCount: Int,
+    @ColumnInfo(name = "created_at_epoch_ms")
+    val createdAtEpochMs: Long,
     val status: String,
     @ColumnInfo(name = "completed_at_epoch_ms")
     val completedAtEpochMs: Long,
@@ -100,4 +113,11 @@ data class DailyActivity(
     val completedLocalDate: String,
     @ColumnInfo(name = "completed_count")
     val completedCount: Int,
+)
+
+data class DailyCorrectAnswers(
+    @ColumnInfo(name = "completed_local_date")
+    val completedLocalDate: String,
+    @ColumnInfo(name = "correct_count")
+    val correctCount: Int,
 )

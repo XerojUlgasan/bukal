@@ -1,8 +1,8 @@
 # Bukal SQLite Schema
 
-The executable reference DDL is [`sqlite-schema.sql`](sqlite-schema.sql). It deliberately uses six tables. Retained documents and model files remain in app-specific storage, while small preferences remain in DataStore.
+The executable reference DDL is [`sqlite-schema.sql`](sqlite-schema.sql). It uses eight tables. Retained documents and model files remain in app-specific storage, while small preferences remain in DataStore.
 
-This contract is implemented by the Room entities, DAOs, transactions, and validators under `app/src/main/java/com/example/bukal/data/local/`. Room exports schemas 1 through 3 under `app/schemas/com.example.bukal.data.local.BukalDatabase/`; migration 1 to 2 adds generated-quiz time/status, and migration 2 to 3 adds the retained highest score without adding a seventh table.
+This contract is implemented by the Room entities, DAOs, transactions, and validators under `app/src/main/java/com/example/bukal/data/local/`. Room exports schemas 1 through 5 under `app/schemas/com.example.bukal.data.local.BukalDatabase/`; migration 3 to 4 adds quiz sets and backfills every legacy attempt as a one-item set, while migration 4 to 5 adds the optional one-time Markdown summary fields to `materials`.
 
 ## Supported Flow
 
@@ -14,27 +14,39 @@ document file
   -> one embedding per chunk
   -> semantic document search
 
-selected passage
-  -> locally generated quiz with up to five questions
-  -> answers and results saved with each question
-  -> History
-  -> yearly activity and streaks derived from completed attempts
+user requests file summary
+  -> summarize every ordered passage with the selected local quiz model
+  -> reduce the source-linked notes into one validated Markdown summary
+  -> save it once on the material row
+  -> reopen the stored summary without another model call
+
+one to five selected passages
+  -> calculate five selected-type slots per passage
+  -> randomly reuse distinct matching questions from prior attempts
+  -> sequentially generate only missing per-type slots
+  -> save fresh composed attempts and link them into a new quiz set
+  -> answers and results saved with each question in one set transaction
+  -> one History item
+  -> yearly heatmap activity derived from completed quiz sets
+  -> daily streak qualification derived from their correct question results
 ```
 
-Learner responses stay in memory while answering. Immediately after a full or partial successful generation, the app saves one `saved` quiz and its one to five questions in a single Room transaction. Before generation, Bukal reuses an existing quiz for the selected passage. Checking updates that same row and child graph atomically. A retake replaces its latest responses and score, retains its highest score, and never creates another History row.
+Learner responses stay in memory while answering. For each selected passage, Bukal reads all prior questions, keeps the newest copy of each type-and-prompt duplicate, randomly chooses matching questions up to the requested type quotas, and generates only the deficits. It copies that composition into a fresh `saved` attempt in one transaction, preserving every prior attempt. Once all selected passage attempts are ready, Bukal creates a new ordered `quiz_sets` row. Checking updates the set and every member attempt in one transaction. An exact History retake replaces that set's latest responses and combined score, retains its highest score, and does not create another row.
 
-## The Six Tables
+## The Eight Tables
 
 | Table | What it stores |
 |---|---|
-| `materials` | Imported document name, format, optional retained-file path, and import time. The actual document is not stored as a database BLOB. |
+| `materials` | Imported document name, format, optional retained-file path, import time, and an optional one-time Markdown summary with its quiz-model ID and generation time. The actual document is not stored as a database BLOB. |
 | `passages` | Ordered, bounded source text extracted from a material. Quiz evidence points back to a passage's stable `source_id`. |
 | `search_chunks` | Overlapping pieces of a passage. Every chunk has its own optional embedding, so one document can produce many searchable vectors. |
-| `attempts` | One saved generated quiz per passage, its quiz model ID, generation time, status, latest completion time/local date, latest score, highest score, and possible points. |
+| `attempts` | One prepared quiz per passage, containing copied reusable questions and generated top-ups plus its quiz model ID, generation time, status, latest completion time/local date, latest score, highest score, and possible points. |
+| `quiz_sets` | One saved or completed History object for one prepared ordered quiz run, including its combined latest and highest scores. |
+| `quiz_set_items` | Ordered links from a quiz set to its prepared per-passage attempts. |
 | `questions` | The generated question, type-specific answer key, learner response, boolean-derived result, and score. |
 | `matching_pairs` | Legacy matching data retained only so quizzes saved by older builds can still be reopened. New quizzes do not write rows here. |
 
-Because schema version 1 made completion time/date non-null, a `saved` row uses its generation time/date as temporary values in those columns. The `status` column is authoritative: completion and Profile queries ignore those placeholders until the row is replaced by a `completed` attempt.
+Because schema version 1 made attempt completion time/date non-null, a saved attempt uses its generation time/date as temporary values. Attempt status distinguishes cached unanswered graphs from completed member graphs; `quiz_sets.status` is authoritative for History and Profile.
 
 ## Relationship Map
 
@@ -43,6 +55,8 @@ erDiagram
     MATERIALS ||--o{ PASSAGES : contains
     PASSAGES ||--o{ SEARCH_CHUNKS : splits_into
     PASSAGES ||--o{ ATTEMPTS : used_for
+    QUIZ_SETS ||--|{ QUIZ_SET_ITEMS : orders
+    ATTEMPTS ||--o{ QUIZ_SET_ITEMS : included_in
     ATTEMPTS ||--|{ QUESTIONS : contains
     QUESTIONS ||--o{ MATCHING_PAIRS : may_contain
 ```
@@ -79,26 +93,46 @@ The five current quiz types share one `questions` table:
 
 The embedding model performs semantic retrieval and does not grade answers. For open-answer grading, it retrieves up to five chunks from the selected passage; the local generative quiz model uses those matches to return only `true` or `false`, with `false` when unsure. A separate top-five retrieval and plain-text model call happens only when the learner requests an explanation. Multiple choice and true or false remain deterministic.
 
-## Profile, Heatmap, and Streaks
+## Profile, Heatmap, and Streak Pet
 
-Profile data is derived only from `completed` rows in `attempts`; merely generating or saving a quiz does not create activity:
+Profile data is derived only from completed quiz sets; merely generating or saving passage quizzes does not create activity:
 
 ```sql
 SELECT completed_local_date, COUNT(*) AS completed_count
-FROM attempts
+FROM quiz_sets
 WHERE status = 'completed'
   AND completed_local_date BETWEEN :year || '-01-01' AND :year || '-12-31'
 GROUP BY completed_local_date
 ORDER BY completed_local_date;
 ```
 
-The yearly heatmap uses these daily counts. Kotlin calculates current and longest streaks from the ordered dates. A profile, activity, daily-total, or streak table would duplicate data and could drift out of sync.
+The yearly heatmap uses these daily completed-set counts. The pet and Profile share a stricter daily-streak query:
+
+```sql
+SELECT
+    quiz_sets.completed_local_date,
+    COUNT(
+        DISTINCT CASE WHEN questions.result = 'correct' THEN
+            attempts.passage_id || CHAR(31) || questions.quiz_type ||
+            CHAR(31) || LOWER(TRIM(questions.prompt))
+        END
+    ) AS correct_count
+FROM quiz_sets
+JOIN quiz_set_items ON quiz_set_items.quiz_set_id = quiz_sets.id
+JOIN attempts ON attempts.id = quiz_set_items.attempt_id
+JOIN questions ON questions.attempt_id = quiz_set_items.attempt_id
+WHERE quiz_sets.status = 'completed'
+GROUP BY quiz_sets.completed_local_date
+ORDER BY quiz_sets.completed_local_date;
+```
+
+The distinct key is the source passage plus question type plus normalized prompt, so copied or retaken questions cannot be farmed repeatedly on one date. Kotlin keeps only dates with at least 10 correct answers, then calculates current and longest consecutive-date streaks. Yesterday's qualifying date remains current while today's goal is in progress; the streak breaks after a full missed local date. The floating pet reads that same derived state, so a profile, pet, activity, daily-total, or streak table would duplicate data and could drift out of sync.
 
 ## Data Kept Outside SQLite
 
 | Storage | Data |
 |---|---|
-| Room/SQLite | The six structured tables above. |
+| Room/SQLite | The eight structured tables above. |
 | DataStore | Selected quiz model ID, selected embedding model ID, and other small preferences. |
 | App-specific files | Original retained documents, the local quiz model, and the Granite embedding model package. |
 
@@ -114,10 +148,12 @@ The executable reference DDL demonstrates the complete SQLite constraints. Room 
 4. Fill-in-the-blank, identification, and explanation evaluations save only correct, incorrect, or unanswered results and do not store generated feedback.
 5. Legacy matching data requires at least two complete pairs, and every selected right ID belongs to that question.
 6. Question points sum to the attempt totals. Correct answers earn one point; incorrect and unanswered answers earn zero out of one possible point.
-7. On a `completed` row, `completed_local_date` is the real device-local calendar date captured when the attempt completes. Saved-row placeholders never enter completion queries.
+7. On a `completed` row, `completed_local_date` is the real device-local calendar date captured when the attempt completes. Saved-row placeholders never enter heatmap or daily correct-answer queries.
 8. `highest_earned_points` is at least the latest `earned_points` and never exceeds `possible_points`.
-9. Search only compares vectors with the same model ID and dimensions.
-10. Chunk offsets reproduce `content` from the passage and adjacent chunks overlap according to the configured policy.
+9. A quiz set has one to five distinct attempts in stored passage order; its scores are the combined member scores for the latest whole-set completion.
+10. Search only compares vectors with the same model ID and dimensions.
+11. Chunk offsets reproduce `content` from the passage and adjacent chunks overlap according to the configured policy.
+12. A material summary is written only when `summary_markdown` is null. Its Markdown, model ID, and generation time are saved together after the complete summary validates; failed or cancelled generation leaves all three fields null.
 
 These checks stay visible in repository tests instead of being hidden in database triggers.
 
@@ -125,14 +161,14 @@ These checks stay visible in repository tests instead of being hidden in databas
 
 - Deleting an unused material cascades through its passages and search chunks.
 - A passage referenced by History cannot be deleted because `attempts.passage_id` uses `RESTRICT`.
-- Deleting an attempt explicitly cascades to its questions and matching pairs.
+- An attempt linked to a quiz set cannot be deleted until the set is removed. Deleting a set cascades only to its membership rows, preserving cached attempts.
 - Re-import changed content as a new material instead of mutating passages that support saved evidence.
 
 ## Room Implementation Notes
 
 - Use auto-generated `Long` IDs.
-- Insert a generated graph in one `@Transaction` method. First completion and every retake update that same attempt and replace its child answer graph in one transaction.
+- Insert a generated graph in one `@Transaction` method. First completion and every retake update the quiz set and every member attempt in one transaction.
 - Index a passage by replacing its `search_chunks` rows in one transaction.
 - Encode embeddings as a documented fixed-endian float array in the BLOB and verify byte length against `embedding_dimensions`.
-- Keep both exported schemas and test the explicit version 1 to 2 migration.
-- Test rollback, foreign-key deletion, daily aggregation, chunk overlap, vector encode/decode, model/dimension filtering, and all five question types with an in-memory Room database where appropriate.
+- Keep all exported schemas and test each explicit migration, including version 3 to 4 legacy backfill and version 4 to 5 summary fields.
+- Test overlapping set membership, whole-set rollback, daily aggregation, chunk overlap, vector encode/decode, model/dimension filtering, and all five question types with an in-memory Room database where appropriate.

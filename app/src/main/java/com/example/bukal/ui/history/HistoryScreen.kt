@@ -115,7 +115,7 @@ data class HistoryUiState(
 fun HistoryScreen(
     state: HistoryUiState,
     onMenuClick: () -> Unit,
-    onAttemptClick: (Long) -> Unit,
+    onQuizSetClick: (Long) -> Unit,
     onDestinationSelected: (MainDestination) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -169,7 +169,7 @@ fun HistoryScreen(
             ) { attempt ->
                 HistoryAttemptCard(
                     attempt = attempt,
-                    onClick = { onAttemptClick(attempt.id) },
+                    onClick = { onQuizSetClick(attempt.id) },
                 )
             }
             if (state.earlier.isNotEmpty()) {
@@ -187,7 +187,7 @@ fun HistoryScreen(
                 ) { attempt ->
                     HistoryAttemptCard(
                         attempt = attempt,
-                        onClick = { onAttemptClick(attempt.id) },
+                        onClick = { onQuizSetClick(attempt.id) },
                     )
                 }
             }
@@ -352,7 +352,7 @@ private fun HistoryScreenPreview() {
         HistoryScreen(
             state = HistoryUiState.mock,
             onMenuClick = {},
-            onAttemptClick = {},
+            onQuizSetClick = {},
             onDestinationSelected = {},
         )
     }

@@ -29,6 +29,12 @@ data class MaterialEntity(
     val retainedFilePath: String? = null,
     @ColumnInfo(name = "imported_at_epoch_ms")
     val importedAtEpochMs: Long,
+    @ColumnInfo(name = "summary_markdown")
+    val summaryMarkdown: String? = null,
+    @ColumnInfo(name = "summary_model_id")
+    val summaryModelId: String? = null,
+    @ColumnInfo(name = "summarized_at_epoch_ms")
+    val summarizedAtEpochMs: Long? = null,
 )
 
 @Entity(
@@ -163,6 +169,90 @@ data class AttemptEntity(
     val highestEarnedPoints: Double = earnedPoints,
     @ColumnInfo(name = "possible_points")
     val possiblePoints: Double,
+)
+
+@Entity(
+    tableName = "quiz_sets",
+    indices = [
+        Index(
+            value = ["selection_key"],
+            unique = true,
+            name = "index_quiz_sets_selection_key",
+        ),
+        Index(
+            value = ["created_at_epoch_ms"],
+            orders = [Index.Order.DESC],
+            name = "idx_quiz_sets_created_at",
+        ),
+        Index(
+            value = ["completed_at_epoch_ms"],
+            orders = [Index.Order.DESC],
+            name = "idx_quiz_sets_completed_at",
+        ),
+        Index(
+            value = ["completed_local_date"],
+            name = "idx_quiz_sets_completed_local_date",
+        ),
+    ],
+)
+data class QuizSetEntity(
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0,
+    @ColumnInfo(name = "selection_key")
+    val selectionKey: String,
+    @ColumnInfo(name = "created_at_epoch_ms")
+    val createdAtEpochMs: Long,
+    @ColumnInfo(defaultValue = "'saved'")
+    val status: String = AttemptStatuses.SAVED,
+    @ColumnInfo(name = "completed_at_epoch_ms")
+    val completedAtEpochMs: Long,
+    @ColumnInfo(name = "completed_local_date")
+    val completedLocalDate: String,
+    @ColumnInfo(name = "earned_points")
+    val earnedPoints: Double,
+    @ColumnInfo(name = "highest_earned_points", defaultValue = "0")
+    val highestEarnedPoints: Double = earnedPoints,
+    @ColumnInfo(name = "possible_points")
+    val possiblePoints: Double,
+)
+
+@Entity(
+    tableName = "quiz_set_items",
+    primaryKeys = ["quiz_set_id", "attempt_id"],
+    foreignKeys = [
+        ForeignKey(
+            entity = QuizSetEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["quiz_set_id"],
+            onUpdate = ForeignKey.RESTRICT,
+            onDelete = ForeignKey.CASCADE,
+        ),
+        ForeignKey(
+            entity = AttemptEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["attempt_id"],
+            onUpdate = ForeignKey.RESTRICT,
+            onDelete = ForeignKey.RESTRICT,
+        ),
+    ],
+    indices = [
+        Index(
+            value = ["quiz_set_id", "position"],
+            unique = true,
+            name = "index_quiz_set_items_quiz_set_id_position",
+        ),
+        Index(
+            value = ["attempt_id"],
+            name = "index_quiz_set_items_attempt_id",
+        ),
+    ],
+)
+data class QuizSetItemEntity(
+    @ColumnInfo(name = "quiz_set_id")
+    val quizSetId: Long,
+    @ColumnInfo(name = "attempt_id")
+    val attemptId: Long,
+    val position: Int,
 )
 
 @Entity(

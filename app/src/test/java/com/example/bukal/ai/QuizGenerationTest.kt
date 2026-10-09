@@ -9,8 +9,101 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlin.random.Random
 
 class QuizGenerationTest {
+    @Test
+    fun reusesOnlyMatchingQuestionsUpToTheRequestedTypeQuota() {
+        val typeCounts = currentTypes.associateTo(linkedMapOf()) { it to 1 }
+        val questionPool = listOf(
+            question(QuestionType.MULTIPLE_CHOICE, 1),
+            question(QuestionType.MULTIPLE_CHOICE, 2),
+            question(QuestionType.MULTIPLE_CHOICE, 3),
+            question(QuestionType.TRUE_FALSE, 4),
+            question(QuestionType.TRUE_FALSE, 5),
+        )
+
+        val plan = planQuizReuse(typeCounts, questionPool, Random(1))
+
+        assertEquals(
+            mapOf(QuestionType.MULTIPLE_CHOICE to 1, QuestionType.TRUE_FALSE to 1),
+            plan.reusedQuestions.groupingBy(QuizQuestion::type).eachCount(),
+        )
+        assertEquals(
+            linkedMapOf(
+                QuestionType.FILL_IN_THE_BLANK to 1,
+                QuestionType.IDENTIFICATION to 1,
+                QuestionType.EXPLANATION to 1,
+            ),
+            plan.missingTypeCounts,
+        )
+    }
+
+    @Test
+    fun fillsOnlyTheMissingSlotsAndKeepsTheFiveQuestionDistribution() {
+        val typeCounts = linkedMapOf(
+            QuestionType.MULTIPLE_CHOICE to 3,
+            QuestionType.FILL_IN_THE_BLANK to 2,
+        )
+        val questionPool = listOf(
+            question(QuestionType.MULTIPLE_CHOICE, 1),
+            question(QuestionType.MULTIPLE_CHOICE, 2),
+            question(QuestionType.TRUE_FALSE, 3),
+            question(QuestionType.TRUE_FALSE, 4),
+            question(QuestionType.TRUE_FALSE, 5),
+        )
+        val plan = planQuizReuse(typeCounts, questionPool, Random(1))
+        val generated = listOf(
+            question(QuestionType.MULTIPLE_CHOICE, 6),
+            question(QuestionType.FILL_IN_THE_BLANK, 7),
+            question(QuestionType.FILL_IN_THE_BLANK, 8),
+        )
+
+        val composed = composeQuizQuestions(typeCounts, plan.reusedQuestions, generated)
+
+        assertEquals(
+            linkedMapOf(
+                QuestionType.MULTIPLE_CHOICE to 1,
+                QuestionType.FILL_IN_THE_BLANK to 2,
+            ),
+            plan.missingTypeCounts,
+        )
+        assertEquals(
+            listOf(
+                QuestionType.MULTIPLE_CHOICE,
+                QuestionType.MULTIPLE_CHOICE,
+                QuestionType.MULTIPLE_CHOICE,
+                QuestionType.FILL_IN_THE_BLANK,
+                QuestionType.FILL_IN_THE_BLANK,
+            ),
+            composed.map(QuizQuestion::type),
+        )
+        assertEquals(listOf("q1", "q2", "q3", "q4", "q5"), composed.map(QuizQuestion::id))
+    }
+
+    @Test
+    fun duplicateSavedQuestionsCountOnlyOnceInTheReusePool() {
+        val saved = question(QuestionType.MULTIPLE_CHOICE, 1)
+
+        val plan = planQuizReuse(
+            typeCounts = linkedMapOf(
+                QuestionType.MULTIPLE_CHOICE to 2,
+                QuestionType.FILL_IN_THE_BLANK to 3,
+            ),
+            questionPool = listOf(saved, saved.copy(id = "another-row")),
+            random = Random(1),
+        )
+
+        assertEquals(1, plan.reusedQuestions.size)
+        assertEquals(
+            linkedMapOf(
+                QuestionType.MULTIPLE_CHOICE to 1,
+                QuestionType.FILL_IN_THE_BLANK to 3,
+            ),
+            plan.missingTypeCounts,
+        )
+    }
+
     @Test
     fun parsesEachTypeWithoutTypeIndexOrCriteriaFields() {
         val questions = currentTypes.mapIndexed { index, type ->
@@ -65,6 +158,24 @@ class QuizGenerationTest {
         )
 
         assertEquals(1, (question.answer as QuestionAnswer.MultipleChoice).answerIndex)
+    }
+
+    @Test
+    fun keepsTheAnswerAndThreeDistractorsWhenTheModelReturnsExtraOptions() {
+        val question = parseAndValidateQuestion(
+            response =
+                """{"question":"What is the forecasting goal?","options":["Recommend quantity","Identify shortages","Customer availability","Production recommendation","Predict demand"],"answer":"Predict demand"}""",
+            type = QuestionType.MULTIPLE_CHOICE,
+            passage = passage,
+            index = 0,
+        )
+
+        val answer = question.answer as QuestionAnswer.MultipleChoice
+        assertEquals(
+            listOf("Recommend quantity", "Identify shortages", "Customer availability", "Predict demand"),
+            answer.options,
+        )
+        assertEquals(3, answer.answerIndex)
     }
 
     @Test
@@ -211,6 +322,42 @@ class QuizGenerationTest {
         assertTrue(sentRequests.all { it.contains("FOCUS EXCERPT FOR THIS QUESTION") })
         assertEquals(5, sentRequests.map { it.substringAfterLast("copied from the source):\n") }.toSet().size)
         assertTrue(sentInstructions.drop(1).all { it.contains("Do not repeat") })
+    }
+
+    @Test
+    fun generatesOnlyTheMissingSlotsAndAvoidsAReusedPrompt() = runBlocking {
+        val reused = question(QuestionType.MULTIPLE_CHOICE, 1)
+        val generatedTypes = listOf(
+            QuestionType.MULTIPLE_CHOICE,
+            QuestionType.FILL_IN_THE_BLANK,
+            QuestionType.FILL_IN_THE_BLANK,
+        )
+        val sentInstructions = mutableListOf<String>()
+        val progress = mutableListOf<Pair<Int, Int>>()
+        var call = 0
+        val generator = QuizGenerator(
+            onQuestionStarted = { current, total -> progress += current to total },
+        ) { _, instruction, _ ->
+            sentInstructions += instruction
+            val type = generatedTypes[call]
+            responseFor(type, ++call + 5)
+        }
+
+        val result = generator.generate(
+            request = QuizGenerationRequest(
+                model = quizModel,
+                passage = passage,
+                typeCounts = linkedMapOf(
+                    QuestionType.MULTIPLE_CHOICE to 1,
+                    QuestionType.FILL_IN_THE_BLANK to 2,
+                ),
+            ),
+            existingQuestions = listOf(reused),
+        )
+
+        assertEquals(generatedTypes, result.questions.map(QuizQuestion::type))
+        assertEquals(listOf(1 to 3, 2 to 3, 3 to 3), progress)
+        assertTrue(sentInstructions.first().contains(reused.prompt))
     }
 
     @Test
@@ -376,6 +523,14 @@ class QuizGenerationTest {
         QuestionType.EXPLANATION ->
             """{"question":"Explain item $number.","answer":"Gamma explains change."}"""
     }
+
+    private fun question(type: QuestionType, number: Int): QuizQuestion =
+        parseAndValidateQuestion(
+            response = responseFor(type, number),
+            type = type,
+            passage = passage,
+            index = number - 1,
+        )
 
     private val passage = PassageEntity(
         id = 1,

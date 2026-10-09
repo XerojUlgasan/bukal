@@ -56,6 +56,8 @@ data class GeneratingUiState(
     val modelName: String,
     val passageId: String,
     val passageTitle: String,
+    val currentPassageNumber: Int = 1,
+    val totalPassages: Int = 1,
     val currentQuestionNumber: Int = 1,
     val totalQuestions: Int = 5,
     val errorMessage: String? = null,
@@ -102,6 +104,8 @@ fun GeneratingScreen(
                     text = if (state.errorMessage == null) {
                         stringResource(
                             R.string.generating_status,
+                            state.currentPassageNumber,
+                            state.totalPassages,
                             state.currentQuestionNumber,
                             state.totalQuestions,
                         )

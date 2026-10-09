@@ -68,6 +68,10 @@ data class QuizUiState(
     val passageId: String,
     val currentQuestion: Int,
     val totalQuestions: Int,
+    val currentPassage: Int = 1,
+    val totalPassages: Int = 1,
+    val currentPassageQuestion: Int = currentQuestion,
+    val totalPassageQuestions: Int = totalQuestions,
     val questionType: QuestionType,
     val prompt: String,
     val options: List<String>,
@@ -272,11 +276,21 @@ private fun QuestionMeta(state: QuizUiState) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = stringResource(
-                R.string.quiz_question_position,
-                state.currentQuestion,
-                state.totalQuestions,
-            ),
+            text = if (state.totalPassages > 1) {
+                stringResource(
+                    R.string.quiz_passage_question_position,
+                    state.currentPassage,
+                    state.totalPassages,
+                    state.currentPassageQuestion,
+                    state.totalPassageQuestions,
+                )
+            } else {
+                stringResource(
+                    R.string.quiz_question_position,
+                    state.currentQuestion,
+                    state.totalQuestions,
+                )
+            },
             color = BukalMutedText,
             style = MaterialTheme.typography.bodyLarge,
         )

@@ -8,7 +8,6 @@ import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -31,7 +30,7 @@ class BukalDatabaseTest {
     }
 
     @Test
-    fun schemaContainsOnlyTheSixReviewedTables() {
+    fun schemaContainsOnlyTheEightReviewedTables() {
         val tableNames = buildList {
             database.openHelper.readableDatabase.query(
                 "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT IN ('android_metadata', 'room_master_table') ORDER BY name",
@@ -41,9 +40,63 @@ class BukalDatabaseTest {
         }
 
         assertEquals(
-            listOf("attempts", "matching_pairs", "materials", "passages", "questions", "search_chunks"),
+            listOf(
+                "attempts",
+                "matching_pairs",
+                "materials",
+                "passages",
+                "questions",
+                "quiz_set_items",
+                "quiz_sets",
+                "search_chunks",
+            ),
             tableNames,
         )
+    }
+
+    @Test
+    fun materialSummaryIsSavedOnlyOnce() = runBlocking {
+        val materialId = database.materialDao().insert(
+            ImportedMaterial(
+                material = MaterialEntity(
+                    displayName = "One-time summary",
+                    documentFormat = DocumentFormats.TXT,
+                    importedAtEpochMs = 1,
+                ),
+                passages = listOf(
+                    PassageEntity(
+                        materialId = 0,
+                        sourceId = "TXT-P001",
+                        position = 0,
+                        content = "Alpha is first.",
+                    ),
+                ),
+            ),
+        )
+
+        assertEquals(
+            1,
+            database.materialDao().saveSummaryOnce(
+                materialId,
+                "# Overall Summary\n\nFirst summary.",
+                "quiz-model-a",
+                100,
+            ),
+        )
+        assertEquals(
+            0,
+            database.materialDao().saveSummaryOnce(
+                materialId,
+                "# Overall Summary\n\nReplacement summary.",
+                "quiz-model-b",
+                200,
+            ),
+        )
+
+        val saved = requireNotNull(database.materialDao().getById(materialId))
+        assertEquals("# Overall Summary\n\nFirst summary.", saved.summaryMarkdown)
+        assertEquals("quiz-model-a", saved.summaryModelId)
+        assertEquals(100L, saved.summarizedAtEpochMs)
     }
 
     @Test
@@ -140,8 +193,7 @@ class BukalDatabaseTest {
             ),
             QuestionRecord(incorrectExplanation(position = 4)),
         )
-        val attemptId = database.attemptDao().insert(
-            CompletedAttemptRecord(
+        val completedRecord = CompletedAttemptRecord(
                 attempt = AttemptEntity(
                     passageId = passage.id,
                     quizModelId = "quiz-model",
@@ -151,6 +203,22 @@ class BukalDatabaseTest {
                     possiblePoints = 5.0,
                 ),
                 questions = questionRecords,
+        )
+        val attemptId = database.attemptDao().insert(completedRecord)
+        val completedSetId = database.attemptDao().getOrCreateQuizSet(
+            attemptIds = listOf(attemptId),
+            createdAtEpochMs = 1_760_000_000_000,
+            localDate = "2026-10-09",
+        )
+        val firstSet = requireNotNull(database.attemptDao().getSavedQuizSet(completedSetId))
+        database.attemptDao().replaceQuizSetWithCompleted(
+            CompletedQuizSetRecord(
+                quizSet = firstSet.quizSet.copy(
+                    status = AttemptStatuses.COMPLETED,
+                    earnedPoints = 2.0,
+                    highestEarnedPoints = 2.0,
+                ),
+                attempts = listOf(CompletedQuizSetAttempt(attemptId, completedRecord)),
             ),
         )
 
@@ -177,21 +245,25 @@ class BukalDatabaseTest {
                 ),
             ),
         )
+        val savedSetId = database.attemptDao().getOrCreateQuizSet(
+            attemptIds = listOf(savedQuizId),
+            createdAtEpochMs = 1_760_000_100_000,
+            localDate = "2026-10-09",
+        )
 
         val history = database.attemptDao().getHistory()
-        assertEquals(listOf(savedQuizId, attemptId), history.map(AttemptHistoryRow::attemptId))
+        assertEquals(listOf(savedSetId, completedSetId), history.map(QuizSetHistoryRow::quizSetId))
         assertEquals(AttemptStatuses.SAVED, history.first().status)
         assertEquals("Local History", history.first().materialName)
         assertEquals(1, database.attemptDao().getDailyActivity("2026").single().completedCount)
+        assertEquals(2, database.attemptDao().getDailyCorrectAnswers().single().correctCount)
 
         val savedQuiz = requireNotNull(database.attemptDao().getSavedQuiz(savedQuizId))
         assertEquals(AttemptStatuses.SAVED, savedQuiz.attempt.status)
         assertEquals(QuestionResults.UNANSWERED, savedQuiz.questions.single().question.result)
         assertEquals(savedQuizId, database.attemptDao().getQuizForPassage(passage.id)?.attempt?.id)
 
-        val completedSavedQuizId = database.attemptDao().replaceQuizWithCompleted(
-            quizId = savedQuizId,
-            completed = CompletedAttemptRecord(
+        val completedSavedRecord = CompletedAttemptRecord(
                 attempt = savedQuiz.attempt.copy(
                     status = AttemptStatuses.COMPLETED,
                     completedAtEpochMs = 1_760_000_200_000,
@@ -199,16 +271,25 @@ class BukalDatabaseTest {
                     highestEarnedPoints = 1.0,
                 ),
                 questions = listOf(QuestionRecord(correctMultipleChoice(position = 0))),
+        )
+        val savedSet = requireNotNull(database.attemptDao().getSavedQuizSet(savedSetId))
+        database.attemptDao().replaceQuizSetWithCompleted(
+            CompletedQuizSetRecord(
+                quizSet = savedSet.quizSet.copy(
+                    status = AttemptStatuses.COMPLETED,
+                    completedAtEpochMs = 1_760_000_200_000,
+                    earnedPoints = 1.0,
+                    highestEarnedPoints = 1.0,
+                ),
+                attempts = listOf(CompletedQuizSetAttempt(savedQuizId, completedSavedRecord)),
             ),
         )
-        assertEquals(savedQuizId, completedSavedQuizId)
-        assertEquals(AttemptStatuses.COMPLETED, database.attemptDao().getAttempt(completedSavedQuizId)?.status)
+        assertEquals(AttemptStatuses.COMPLETED, database.attemptDao().getAttempt(savedQuizId)?.status)
         assertEquals(2, database.attemptDao().getDailyActivity("2026").single().completedCount)
+        assertEquals(2, database.attemptDao().getDailyCorrectAnswers().single().correctCount)
 
-        val retakenQuizId = database.attemptDao().replaceQuizWithCompleted(
-            quizId = completedSavedQuizId,
-            completed = CompletedAttemptRecord(
-                attempt = requireNotNull(database.attemptDao().getAttempt(completedSavedQuizId)).copy(
+        val retakenRecord = CompletedAttemptRecord(
+                attempt = requireNotNull(database.attemptDao().getAttempt(savedQuizId)).copy(
                     completedAtEpochMs = 1_760_000_300_000,
                     earnedPoints = 0.0,
                 ),
@@ -221,13 +302,23 @@ class BukalDatabaseTest {
                         ),
                     ),
                 ),
+        )
+        val completedSet = requireNotNull(database.attemptDao().getSavedQuizSet(savedSetId))
+        database.attemptDao().replaceQuizSetWithCompleted(
+            CompletedQuizSetRecord(
+                quizSet = completedSet.quizSet.copy(
+                    completedAtEpochMs = 1_760_000_300_000,
+                    earnedPoints = 0.0,
+                ),
+                attempts = listOf(CompletedQuizSetAttempt(savedQuizId, retakenRecord)),
             ),
         )
-        assertEquals(completedSavedQuizId, retakenQuizId)
-        assertEquals(retakenQuizId, database.attemptDao().getQuizForPassage(passage.id)?.attempt?.id)
+        assertEquals(savedQuizId, database.attemptDao().getQuizForPassage(passage.id)?.attempt?.id)
         assertEquals(2, database.attemptDao().getHistory().size)
-        assertEquals(0.0, database.attemptDao().getAttempt(retakenQuizId)?.earnedPoints ?: -1.0, 0.0)
-        assertEquals(1.0, database.attemptDao().getAttempt(retakenQuizId)?.highestEarnedPoints ?: -1.0, 0.0)
+        assertEquals(0.0, database.attemptDao().getAttempt(savedQuizId)?.earnedPoints ?: -1.0, 0.0)
+        assertEquals(1.0, database.attemptDao().getAttempt(savedQuizId)?.highestEarnedPoints ?: -1.0, 0.0)
+        assertEquals(1.0, database.attemptDao().getSavedQuizSet(savedSetId)?.quizSet?.highestEarnedPoints ?: -1.0, 0.0)
+        assertEquals(2, database.attemptDao().getDailyCorrectAnswers().single().correctCount)
 
         val savedQuestions = database.attemptDao().getQuestions(attemptId)
         assertEquals(5, savedQuestions.size)
@@ -235,11 +326,148 @@ class BukalDatabaseTest {
         val savedMatchingPairs = database.attemptDao().getMatchingPairs(savedQuestions[3].id)
         assertEquals(listOf("right-2", "right-1"), savedMatchingPairs.map { it.selectedRightId })
 
-        assertEquals(1, database.attemptDao().deleteAttempt(attemptId))
-        assertTrue(database.attemptDao().getQuestions(attemptId).isEmpty())
-        assertTrue(database.attemptDao().getMatchingPairs(savedQuestions[3].id).isEmpty())
         assertEquals(2, database.searchChunkDao().getForPassage(passage.id).size)
     }
+
+    @Test
+    fun questionPoolLoadsEveryPassageAttemptNewestFirst() = runBlocking {
+        val materialId = database.materialDao().insert(
+            ImportedMaterial(
+                material = MaterialEntity(
+                    displayName = "Question pool",
+                    documentFormat = DocumentFormats.TXT,
+                    importedAtEpochMs = 1,
+                ),
+                passages = listOf(
+                    PassageEntity(
+                        materialId = 0,
+                        sourceId = "TXT-P001",
+                        position = 0,
+                        content = "Passage content for saved questions.",
+                    ),
+                ),
+            ),
+        )
+        val passage = database.materialDao().getPassages(materialId).single()
+        val olderAttemptId = database.attemptDao().insert(savedAttempt(passage))
+        val newerAttempt = savedAttempt(passage)
+        val newerAttemptId = database.attemptDao().insert(
+            newerAttempt.copy(
+                attempt = newerAttempt.attempt.copy(generatedAtEpochMs = 20),
+            ),
+        )
+
+        assertEquals(
+            listOf(newerAttemptId, olderAttemptId),
+            database.attemptDao().getQuizzesForPassage(passage.id).map { it.attempt.id },
+        )
+    }
+
+    @Test
+    fun overlappingPassageSelectionsReuseAttemptsButCreateWholeHistoryItems() = runBlocking {
+        val materialId = database.materialDao().insert(
+            ImportedMaterial(
+                material = MaterialEntity(
+                    displayName = "Shared lesson",
+                    documentFormat = DocumentFormats.TXT,
+                    importedAtEpochMs = 1,
+                ),
+                passages = (1..3).map { index ->
+                    PassageEntity(
+                        materialId = 0,
+                        sourceId = "TXT-P00$index",
+                        position = index - 1,
+                        content = "Passage $index has enough source content.",
+                    )
+                },
+            ),
+        )
+        val passages = database.materialDao().getPassages(materialId)
+        val attemptIds = passages.map { passage ->
+            database.attemptDao().insert(savedAttempt(passage))
+        }
+
+        val firstSetId = database.attemptDao().getOrCreateQuizSet(
+            attemptIds = attemptIds.take(2),
+            createdAtEpochMs = 100,
+            localDate = "2026-10-10",
+        )
+        val overlappingSetId = database.attemptDao().getOrCreateQuizSet(
+            attemptIds = listOf(attemptIds[0], attemptIds[2]),
+            createdAtEpochMs = 200,
+            localDate = "2026-10-10",
+        )
+        val reusedSetId = database.attemptDao().getOrCreateQuizSet(
+            attemptIds = attemptIds.take(2),
+            createdAtEpochMs = 300,
+            localDate = "2026-10-10",
+        )
+        val firstSet = requireNotNull(database.attemptDao().getSavedQuizSet(firstSetId))
+        database.attemptDao().replaceQuizSetWithCompleted(
+            CompletedQuizSetRecord(
+                quizSet = firstSet.quizSet.copy(
+                    status = AttemptStatuses.COMPLETED,
+                    completedAtEpochMs = 400,
+                    earnedPoints = 2.0,
+                    highestEarnedPoints = 2.0,
+                ),
+                attempts = firstSet.quizzes.map { quiz ->
+                    CompletedQuizSetAttempt(
+                        attemptId = quiz.attempt.id,
+                        record = CompletedAttemptRecord(
+                            attempt = quiz.attempt.copy(
+                                status = AttemptStatuses.COMPLETED,
+                                completedAtEpochMs = 400,
+                                earnedPoints = 1.0,
+                                highestEarnedPoints = 1.0,
+                            ),
+                            questions = quiz.questions.map { question ->
+                                question.copy(
+                                    question = question.question.copy(
+                                        selectedOptionIndex = 0,
+                                        result = QuestionResults.CORRECT,
+                                        earnedPoints = 1.0,
+                                    ),
+                                )
+                            },
+                        ),
+                    )
+                },
+            ),
+        )
+
+        assertEquals(firstSetId, reusedSetId)
+        assertEquals(2, database.attemptDao().getHistory().size)
+        assertEquals(1, database.attemptDao().getDailyActivity("2026").single().completedCount)
+        assertEquals(
+            listOf(attemptIds[0], attemptIds[2]),
+            database.attemptDao().getSavedQuizSet(overlappingSetId)?.quizzes?.map { it.attempt.id },
+        )
+    }
+
+    private fun savedAttempt(passage: PassageEntity) = CompletedAttemptRecord(
+        attempt = AttemptEntity(
+            passageId = passage.id,
+            quizModelId = "quiz-model",
+            generatedAtEpochMs = 10,
+            status = AttemptStatuses.SAVED,
+            completedAtEpochMs = 10,
+            completedLocalDate = "2026-10-10",
+            earnedPoints = 0.0,
+            possiblePoints = 1.0,
+        ),
+        questions = listOf(
+            QuestionRecord(
+                correctMultipleChoice(position = 0).copy(
+                    sourceId = passage.sourceId,
+                    evidence = passage.content,
+                    selectedOptionIndex = null,
+                    result = QuestionResults.UNANSWERED,
+                    earnedPoints = 0.0,
+                ),
+            ),
+        ),
+    )
 
     private fun correctMultipleChoice(position: Int) = QuestionEntity(
         attemptId = 0,

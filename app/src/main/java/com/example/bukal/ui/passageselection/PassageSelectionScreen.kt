@@ -17,7 +17,7 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
@@ -26,12 +26,13 @@ import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedCard
-import androidx.compose.material3.RadioButton
-import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -53,6 +54,8 @@ import com.example.bukal.ui.theme.BukalMutedText
 import com.example.bukal.ui.theme.BukalOutline
 import com.example.bukal.ui.theme.BukalPrimary
 import com.example.bukal.ui.theme.BukalPrimaryContainer
+import com.example.bukal.ui.theme.BukalSuccess
+import com.example.bukal.ui.theme.BukalSuccessContainer
 import com.example.bukal.ui.theme.BukalSurface
 import com.example.bukal.ui.theme.BukalText
 
@@ -60,12 +63,14 @@ data class PassagePreview(
     val id: String,
     val title: String,
     val excerpt: String,
+    val savedQuestionCount: Int? = null,
 )
 
 data class PassageSelectionUiState(
     val materialName: String,
     val passages: List<PassagePreview>,
-    val selectedPassageId: String?,
+    val selectedPassageIds: Set<String>,
+    val maxSelectedPassages: Int = 5,
 ) {
     companion object {
         val mock = PassageSelectionUiState(
@@ -97,15 +102,27 @@ data class PassageSelectionUiState(
                     excerpt = "The republic left a lasting example of constitutional government and national unity.",
                 ),
             ),
-            selectedPassageId = "TXT-P002",
+            selectedPassageIds = setOf("TXT-P002"),
         )
     }
+}
+
+internal fun togglePassageSelection(
+    selectedIds: Set<String>,
+    passageId: String,
+    limit: Int = 5,
+): Set<String> = when {
+    passageId in selectedIds -> selectedIds - passageId
+    selectedIds.size < limit -> selectedIds + passageId
+    else -> selectedIds
 }
 
 @Composable
 fun PassageSelectionScreen(
     state: PassageSelectionUiState,
     onBackClick: () -> Unit,
+    onFlashcardsClick: () -> Unit,
+    onSummaryClick: () -> Unit,
     onPassageSelected: (String) -> Unit,
     onContinueClick: () -> Unit,
     onDestinationSelected: (MainDestination) -> Unit,
@@ -117,7 +134,7 @@ fun PassageSelectionScreen(
         contentWindowInsets = WindowInsets.safeDrawing,
         bottomBar = {
             PassageSelectionBottomBar(
-                continueEnabled = state.selectedPassageId != null,
+                selectedPassageCount = state.selectedPassageIds.size,
                 onContinueClick = onContinueClick,
                 onDestinationSelected = onDestinationSelected,
             )
@@ -131,12 +148,28 @@ fun PassageSelectionScreen(
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             item {
-                PassageSelectionTopBar(onBackClick = onBackClick)
+                PassageSelectionTopBar(
+                    onBackClick = onBackClick,
+                    onFlashcardsClick = onFlashcardsClick,
+                )
                 Spacer(modifier = Modifier.height(14.dp))
                 MaterialSummary(
                     materialName = state.materialName,
                     passageCount = state.passages.size,
                 )
+                Spacer(modifier = Modifier.height(10.dp))
+                OutlinedButton(
+                    onClick = onSummaryClick,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp),
+                    shape = RoundedCornerShape(14.dp),
+                ) {
+                    Text(
+                        text = stringResource(R.string.summary_open_action),
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                }
                 Spacer(modifier = Modifier.height(18.dp))
                 PassageInstruction()
                 Spacer(modifier = Modifier.height(6.dp))
@@ -147,7 +180,9 @@ fun PassageSelectionScreen(
             ) { passage ->
                 PassageCard(
                     passage = passage,
-                    selected = passage.id == state.selectedPassageId,
+                    selected = passage.id in state.selectedPassageIds,
+                    enabled = passage.id in state.selectedPassageIds ||
+                        state.selectedPassageIds.size < state.maxSelectedPassages,
                     onClick = { onPassageSelected(passage.id) },
                 )
             }
@@ -156,7 +191,10 @@ fun PassageSelectionScreen(
 }
 
 @Composable
-private fun PassageSelectionTopBar(onBackClick: () -> Unit) {
+private fun PassageSelectionTopBar(
+    onBackClick: () -> Unit,
+    onFlashcardsClick: () -> Unit,
+) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -170,9 +208,24 @@ private fun PassageSelectionTopBar(onBackClick: () -> Unit) {
         }
         Text(
             text = stringResource(R.string.passage_title),
+            modifier = Modifier.weight(1f),
             color = BukalText,
             style = MaterialTheme.typography.headlineSmall,
         )
+        Button(
+            onClick = onFlashcardsClick,
+            modifier = Modifier.height(48.dp),
+            shape = RoundedCornerShape(14.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = BukalAccent,
+                contentColor = BukalText,
+            ),
+        ) {
+            Text(
+                text = stringResource(R.string.flashcards_button),
+                style = MaterialTheme.typography.labelLarge,
+            )
+        }
     }
 }
 
@@ -243,15 +296,17 @@ private fun PassageInstruction() {
 private fun PassageCard(
     passage: PassagePreview,
     selected: Boolean,
+    enabled: Boolean,
     onClick: () -> Unit,
 ) {
     OutlinedCard(
         modifier = Modifier
             .fillMaxWidth()
-            .selectable(
-                selected = selected,
-                onClick = onClick,
-                role = Role.RadioButton,
+            .toggleable(
+                value = selected,
+                enabled = enabled,
+                role = Role.Checkbox,
+                onValueChange = { onClick() },
             ),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.outlinedCardColors(
@@ -271,12 +326,13 @@ private fun PassageCard(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.Top,
         ) {
-            RadioButton(
-                selected = selected,
-                onClick = null,
-                colors = RadioButtonDefaults.colors(
-                    selectedColor = BukalPrimary,
-                    unselectedColor = BukalMutedText,
+            Checkbox(
+                checked = selected,
+                enabled = enabled,
+                onCheckedChange = null,
+                colors = CheckboxDefaults.colors(
+                    checkedColor = BukalPrimary,
+                    uncheckedColor = BukalMutedText,
                 ),
             )
             Column(
@@ -305,6 +361,24 @@ private fun PassageCard(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
+                passage.savedQuestionCount?.let { count ->
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Surface(
+                        color = BukalSuccessContainer,
+                        shape = RoundedCornerShape(8.dp),
+                    ) {
+                        Text(
+                            text = androidx.compose.ui.res.pluralStringResource(
+                                R.plurals.passage_saved_questions,
+                                count,
+                                count,
+                            ),
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            color = BukalSuccess,
+                            style = MaterialTheme.typography.labelMedium,
+                        )
+                    }
+                }
             }
         }
     }
@@ -312,7 +386,7 @@ private fun PassageCard(
 
 @Composable
 private fun PassageSelectionBottomBar(
-    continueEnabled: Boolean,
+    selectedPassageCount: Int,
     onContinueClick: () -> Unit,
     onDestinationSelected: (MainDestination) -> Unit,
 ) {
@@ -323,7 +397,7 @@ private fun PassageSelectionBottomBar(
         ) {
             Button(
                 onClick = onContinueClick,
-                enabled = continueEnabled,
+                enabled = selectedPassageCount > 0,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 10.dp)
@@ -332,7 +406,12 @@ private fun PassageSelectionBottomBar(
                 colors = ButtonDefaults.buttonColors(containerColor = BukalPrimary),
             ) {
                 Text(
-                    text = stringResource(R.string.passage_continue_action),
+                    text = androidx.compose.ui.res.pluralStringResource(
+                        R.plurals.passage_continue_action,
+                        selectedPassageCount,
+                        selectedPassageCount,
+                        selectedPassageCount * 5,
+                    ),
                     style = MaterialTheme.typography.labelLarge,
                 )
             }
@@ -357,6 +436,8 @@ private fun PassageSelectionScreenPreview() {
         PassageSelectionScreen(
             state = PassageSelectionUiState.mock,
             onBackClick = {},
+            onFlashcardsClick = {},
+            onSummaryClick = {},
             onPassageSelected = {},
             onContinueClick = {},
             onDestinationSelected = {},

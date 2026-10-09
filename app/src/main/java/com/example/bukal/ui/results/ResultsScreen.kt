@@ -18,7 +18,7 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -91,6 +91,8 @@ data class ResultItem(
     val learnerAnswer: String? = null,
     val expectedAnswer: String? = null,
     val sourceId: String? = null,
+    val passageTitle: String? = null,
+    val passageContent: String? = null,
     val expanded: Boolean = false,
 )
 
@@ -100,9 +102,6 @@ data class ResultsUiState(
     val message: String,
     val materialName: String,
     val questionCount: Int,
-    val passageTitle: String,
-    val passageSourceId: String,
-    val passageContent: String,
     val items: List<ResultItem>,
 ) {
     companion object {
@@ -112,9 +111,6 @@ data class ResultsUiState(
             message = "Great work",
             materialName = "Philippine History",
             questionCount = 5,
-            passageTitle = "The Malolos Constitution",
-            passageSourceId = "TXT-P002",
-            passageContent = "The constitution defined the structure and powers of the new government.",
             items = listOf(
                 ResultItem(
                     id = "q1",
@@ -124,6 +120,8 @@ data class ResultsUiState(
                     learnerAnswer = "The Malolos Constitution",
                     expectedAnswer = "The Malolos Constitution",
                     sourceId = "TXT-P002",
+                    passageTitle = "The Malolos Constitution",
+                    passageContent = "The constitution defined the structure and powers of the new government.",
                 ),
                 ResultItem(
                     id = "q2",
@@ -154,13 +152,14 @@ fun ResultsScreen(
     onCloseClick: () -> Unit,
     onResultToggle: (String) -> Unit,
     onDoneClick: () -> Unit,
+    modifier: Modifier = Modifier,
     explanations: Map<String, String> = emptyMap(),
     explainingQuestionId: String? = null,
     explanationErrors: Map<String, String> = emptyMap(),
     onExplainClick: (String) -> Unit = {},
-    modifier: Modifier = Modifier,
 ) {
-    var showPassage by rememberSaveable { mutableStateOf(false) }
+    var shownPassageItemId by rememberSaveable { mutableStateOf<String?>(null) }
+    val showPassageGroups = state.items.mapNotNull(ResultItem::sourceId).distinct().size > 1
     Scaffold(
         modifier = modifier.fillMaxSize(),
         containerColor = BukalBackground,
@@ -186,26 +185,42 @@ fun ResultsScreen(
                 )
                 Spacer(modifier = Modifier.height(2.dp))
             }
-            items(
+            itemsIndexed(
                 items = state.items,
-                key = ResultItem::id,
-            ) { item ->
-                ResultItemCard(
-                    item = item,
-                    onToggle = { onResultToggle(item.id) },
-                    onViewPassageClick = { showPassage = true },
-                    explanation = explanations[item.id],
-                    isExplaining = explainingQuestionId == item.id,
-                    explanationError = explanationErrors[item.id],
-                    onExplainClick = { onExplainClick(item.id) },
-                )
+                key = { _, item -> item.id },
+            ) { index, item ->
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (showPassageGroups &&
+                        (index == 0 || state.items[index - 1].sourceId != item.sourceId)
+                    ) {
+                        Text(
+                            text = item.passageTitle ?: item.sourceId.orEmpty(),
+                            color = BukalText,
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                        Text(
+                            text = item.sourceId.orEmpty(),
+                            color = BukalMutedText,
+                            style = MaterialTheme.typography.labelMedium,
+                        )
+                    }
+                    ResultItemCard(
+                        item = item,
+                        onToggle = { onResultToggle(item.id) },
+                        onViewPassageClick = { shownPassageItemId = item.id },
+                        explanation = explanations[item.id],
+                        isExplaining = explainingQuestionId == item.id,
+                        explanationError = explanationErrors[item.id],
+                        onExplainClick = { onExplainClick(item.id) },
+                    )
+                }
             }
         }
     }
-    if (showPassage) {
+    state.items.firstOrNull { it.id == shownPassageItemId }?.let { item ->
         PassageBottomSheet(
-            state = state,
-            onDismiss = { showPassage = false },
+            item = item,
+            onDismiss = { shownPassageItemId = null },
         )
     }
 }
@@ -539,7 +554,7 @@ private fun questionTypeLabel(type: QuestionType): String = when (type) {
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
 private fun PassageBottomSheet(
-    state: ResultsUiState,
+    item: ResultItem,
     onDismiss: () -> Unit,
 ) {
     ModalBottomSheet(
@@ -555,17 +570,17 @@ private fun PassageBottomSheet(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text(
-                text = state.passageTitle,
+                text = item.passageTitle.orEmpty(),
                 color = BukalText,
                 style = MaterialTheme.typography.headlineSmall,
             )
             Text(
-                text = state.passageSourceId,
+                text = item.sourceId.orEmpty(),
                 color = BukalMutedText,
                 style = MaterialTheme.typography.labelLarge,
             )
             Text(
-                text = state.passageContent,
+                text = item.passageContent.orEmpty(),
                 color = BukalText,
                 style = MaterialTheme.typography.bodyLarge,
             )

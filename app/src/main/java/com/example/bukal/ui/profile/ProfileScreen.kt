@@ -98,6 +98,8 @@ data class ProfileUiState(
     val completedQuizCount: Int,
     val currentStreakDays: Int,
     val longestStreakDays: Int,
+    val todayCorrectAnswers: Int,
+    val dailyCorrectGoal: Int,
     val activityCounts: List<Int>,
     val achievements: List<ProfileAchievement>,
     val milestones: List<ProfileMilestone>,
@@ -111,6 +113,8 @@ data class ProfileUiState(
             completedQuizCount = 0,
             currentStreakDays = 0,
             longestStreakDays = 0,
+            todayCorrectAnswers = 0,
+            dailyCorrectGoal = STREAK_PET_DAILY_GOAL,
             activityCounts = buildYearActivityCounts(today.year, emptyList()),
             achievements = emptyList(),
             milestones = emptyList(),
@@ -123,6 +127,8 @@ data class ProfileUiState(
             completedQuizCount = 34,
             currentStreakDays = 3,
             longestStreakDays = 8,
+            todayCorrectAnswers = 7,
+            dailyCorrectGoal = STREAK_PET_DAILY_GOAL,
             activityCounts = List(HeatmapWeekCount * HeatmapDayCount) { index ->
                 when {
                     index % 31 == 0 -> 4
@@ -220,6 +226,8 @@ fun ProfileScreen(
             }
             Spacer(modifier = Modifier.height(16.dp))
             StreakCards(state = state)
+            Spacer(modifier = Modifier.height(10.dp))
+            DailyPetGoalCard(state = state)
             Spacer(modifier = Modifier.height(22.dp))
             Text(
                 text = stringResource(R.string.profile_yearly_activity),
@@ -362,6 +370,90 @@ private fun StreakCards(state: ProfileUiState) {
             longest = true,
             modifier = Modifier.weight(1f),
         )
+    }
+}
+
+@Composable
+private fun DailyPetGoalCard(state: ProfileUiState) {
+    val progress = if (state.dailyCorrectGoal <= 0) {
+        0f
+    } else {
+        (state.todayCorrectAnswers.toFloat() / state.dailyCorrectGoal).coerceIn(0f, 1f)
+    }
+    val goalComplete = state.todayCorrectAnswers >= state.dailyCorrectGoal
+
+    OutlinedCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics(mergeDescendants = true) {},
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.outlinedCardColors(containerColor = BukalSurface),
+        border = BorderStroke(1.dp, BukalOutline),
+    ) {
+        Row(
+            modifier = Modifier.padding(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .background(BukalAccent.copy(alpha = 0.14f), RoundedCornerShape(14.dp)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.LocalFireDepartment,
+                    contentDescription = null,
+                    modifier = Modifier.size(28.dp),
+                    tint = BukalAccent,
+                )
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = stringResource(R.string.profile_pet_goal_title),
+                        color = BukalText,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        text = stringResource(
+                            R.string.profile_pet_goal_progress,
+                            state.todayCorrectAnswers.coerceAtMost(state.dailyCorrectGoal),
+                            state.dailyCorrectGoal,
+                        ),
+                        color = BukalPrimary,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+                Spacer(modifier = Modifier.height(3.dp))
+                Text(
+                    text = stringResource(
+                        if (goalComplete) {
+                            R.string.profile_pet_goal_complete
+                        } else {
+                            R.string.profile_pet_goal_incomplete
+                        },
+                    ),
+                    color = BukalMutedText,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Spacer(modifier = Modifier.height(9.dp))
+                LinearProgressIndicator(
+                    progress = { progress },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(8.dp),
+                    color = BukalAccent,
+                    trackColor = BukalOutline.copy(alpha = 0.65f),
+                )
+            }
+        }
     }
 }
 

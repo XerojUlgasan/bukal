@@ -1,6 +1,6 @@
 PRAGMA foreign_keys = ON;
 
--- Reference schema for Room database version 3.
+-- Reference schema for Room database version 5.
 -- Model files and retained source documents stay in app-specific storage.
 -- Small preferences, including selected model IDs, stay in DataStore.
 
@@ -12,7 +12,23 @@ CREATE TABLE materials (
     mime_type TEXT,
     retained_file_path TEXT
         CHECK (retained_file_path IS NULL OR length(trim(retained_file_path)) > 0),
-    imported_at_epoch_ms INTEGER NOT NULL CHECK (imported_at_epoch_ms >= 0)
+    imported_at_epoch_ms INTEGER NOT NULL CHECK (imported_at_epoch_ms >= 0),
+    summary_markdown TEXT,
+    summary_model_id TEXT,
+    summarized_at_epoch_ms INTEGER,
+    CHECK (
+        (
+            summary_markdown IS NULL
+            AND summary_model_id IS NULL
+            AND summarized_at_epoch_ms IS NULL
+        )
+        OR
+        (
+            length(trim(summary_markdown)) > 0
+            AND length(trim(summary_model_id)) > 0
+            AND summarized_at_epoch_ms >= 0
+        )
+    )
 );
 
 CREATE INDEX idx_materials_imported_at
@@ -101,6 +117,56 @@ CREATE INDEX idx_attempts_completed_local_date
 
 CREATE INDEX idx_attempts_passage_id
     ON attempts(passage_id);
+
+CREATE TABLE quiz_sets (
+    id INTEGER PRIMARY KEY,
+    selection_key TEXT NOT NULL UNIQUE,
+    created_at_epoch_ms INTEGER NOT NULL CHECK (created_at_epoch_ms >= 0),
+    status TEXT NOT NULL DEFAULT 'saved' CHECK (status IN ('saved', 'completed')),
+    completed_at_epoch_ms INTEGER NOT NULL CHECK (completed_at_epoch_ms >= 0),
+    completed_local_date TEXT NOT NULL
+        CHECK (
+            length(completed_local_date) = 10
+            AND completed_local_date GLOB
+                '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+        ),
+    earned_points REAL NOT NULL CHECK (earned_points >= 0),
+    highest_earned_points REAL NOT NULL DEFAULT 0
+        CHECK (highest_earned_points >= earned_points),
+    possible_points REAL NOT NULL CHECK (possible_points >= 0),
+    CHECK (earned_points <= possible_points),
+    CHECK (highest_earned_points <= possible_points)
+);
+
+CREATE UNIQUE INDEX index_quiz_sets_selection_key
+    ON quiz_sets(selection_key);
+
+CREATE INDEX idx_quiz_sets_created_at
+    ON quiz_sets(created_at_epoch_ms DESC);
+
+CREATE INDEX idx_quiz_sets_completed_at
+    ON quiz_sets(completed_at_epoch_ms DESC);
+
+CREATE INDEX idx_quiz_sets_completed_local_date
+    ON quiz_sets(completed_local_date);
+
+CREATE TABLE quiz_set_items (
+    quiz_set_id INTEGER NOT NULL,
+    attempt_id INTEGER NOT NULL,
+    position INTEGER NOT NULL CHECK (position >= 0),
+    PRIMARY KEY (quiz_set_id, attempt_id),
+    FOREIGN KEY (quiz_set_id) REFERENCES quiz_sets(id)
+        ON UPDATE RESTRICT ON DELETE CASCADE,
+    FOREIGN KEY (attempt_id) REFERENCES attempts(id)
+        ON UPDATE RESTRICT ON DELETE RESTRICT,
+    UNIQUE (quiz_set_id, position)
+);
+
+CREATE UNIQUE INDEX index_quiz_set_items_quiz_set_id_position
+    ON quiz_set_items(quiz_set_id, position);
+
+CREATE INDEX index_quiz_set_items_attempt_id
+    ON quiz_set_items(attempt_id);
 
 CREATE TABLE questions (
     id INTEGER PRIMARY KEY,

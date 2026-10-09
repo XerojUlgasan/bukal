@@ -24,6 +24,26 @@ abstract class AttemptDao {
     @Update
     protected abstract suspend fun updateAttemptRow(attempt: AttemptEntity): Int
 
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    protected abstract suspend fun insertQuizSetRow(quizSet: QuizSetEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    protected abstract suspend fun insertQuizSetItems(items: List<QuizSetItemEntity>)
+
+    @Update
+    protected abstract suspend fun updateQuizSetRow(quizSet: QuizSetEntity): Int
+
+    @Query("SELECT * FROM quiz_sets WHERE selection_key = :selectionKey")
+    protected abstract suspend fun getQuizSetBySelectionKey(selectionKey: String): QuizSetEntity?
+
+    @Query("SELECT * FROM quiz_sets WHERE id = :quizSetId")
+    protected abstract suspend fun getQuizSetRow(quizSetId: Long): QuizSetEntity?
+
+    @Query(
+        "SELECT attempt_id FROM quiz_set_items WHERE quiz_set_id = :quizSetId ORDER BY position",
+    )
+    protected abstract suspend fun getQuizSetAttemptIds(quizSetId: Long): List<Long>
+
     @Query(
         """
         UPDATE matching_pairs
@@ -81,29 +101,33 @@ abstract class AttemptDao {
     @Query(
         """
         SELECT
-            attempts.id AS attempt_id,
-            materials.display_name AS material_name,
-            passages.title AS passage_title,
-            passages.source_id AS source_id,
-            attempts.quiz_model_id AS quiz_model_id,
-            attempts.generated_at_epoch_ms AS generated_at_epoch_ms,
-            attempts.status AS status,
-            attempts.completed_at_epoch_ms AS completed_at_epoch_ms,
-            attempts.completed_local_date AS completed_local_date,
-            attempts.earned_points AS earned_points,
-            attempts.highest_earned_points AS highest_earned_points,
-            attempts.possible_points AS possible_points,
+            quiz_sets.id AS quiz_set_id,
+            MIN(materials.display_name) AS material_name,
+            CASE WHEN COUNT(DISTINCT attempts.id) = 1
+                THEN MAX(COALESCE(passages.title, passages.source_id))
+                ELSE NULL
+            END AS passage_title,
+            COUNT(DISTINCT attempts.id) AS passage_count,
+            quiz_sets.created_at_epoch_ms AS created_at_epoch_ms,
+            quiz_sets.status AS status,
+            quiz_sets.completed_at_epoch_ms AS completed_at_epoch_ms,
+            quiz_sets.completed_local_date AS completed_local_date,
+            quiz_sets.earned_points AS earned_points,
+            quiz_sets.highest_earned_points AS highest_earned_points,
+            quiz_sets.possible_points AS possible_points,
             COUNT(questions.id) AS question_count,
             GROUP_CONCAT(questions.quiz_type, '|') AS quiz_types
-        FROM attempts
+        FROM quiz_sets
+        JOIN quiz_set_items ON quiz_set_items.quiz_set_id = quiz_sets.id
+        JOIN attempts ON attempts.id = quiz_set_items.attempt_id
         JOIN passages ON passages.id = attempts.passage_id
         JOIN materials ON materials.id = passages.material_id
         JOIN questions ON questions.attempt_id = attempts.id
-        GROUP BY attempts.id
-        ORDER BY attempts.generated_at_epoch_ms DESC, attempts.id DESC
+        GROUP BY quiz_sets.id
+        ORDER BY quiz_sets.created_at_epoch_ms DESC, quiz_sets.id DESC
         """,
     )
-    abstract suspend fun getHistory(): List<AttemptHistoryRow>
+    abstract suspend fun getHistory(): List<QuizSetHistoryRow>
 
     @Query(
         """
@@ -166,6 +190,47 @@ abstract class AttemptDao {
     }
 
     @Transaction
+    open suspend fun getSavedQuizSet(quizSetId: Long): SavedQuizSetRecord? {
+        val quizSet = getQuizSetRow(quizSetId) ?: return null
+        val quizzes = getQuizSetAttemptIds(quizSetId).map { attemptId ->
+            getSavedQuiz(attemptId) ?: return null
+        }
+        return SavedQuizSetRecord(quizSet = quizSet, quizzes = quizzes)
+    }
+
+    @Transaction
+    open suspend fun getOrCreateQuizSet(
+        attemptIds: List<Long>,
+        createdAtEpochMs: Long,
+        localDate: String,
+    ): Long {
+        require(attemptIds.isNotEmpty()) { "A quiz set needs at least one passage quiz" }
+        require(attemptIds.distinct().size == attemptIds.size) { "A quiz set cannot repeat a passage quiz" }
+        val selectionKey = attemptIds.joinToString(",")
+        getQuizSetBySelectionKey(selectionKey)?.let { return it.id }
+        val attempts = attemptIds.map { attemptId ->
+            requireNotNull(getAttempt(attemptId)) { "Quiz $attemptId does not exist" }
+        }
+        val quizSetId = insertQuizSetRow(
+            QuizSetEntity(
+                selectionKey = selectionKey,
+                createdAtEpochMs = createdAtEpochMs,
+                completedAtEpochMs = createdAtEpochMs,
+                completedLocalDate = localDate,
+                earnedPoints = 0.0,
+                highestEarnedPoints = 0.0,
+                possiblePoints = attempts.sumOf(AttemptEntity::possiblePoints),
+            ),
+        )
+        insertQuizSetItems(
+            attemptIds.mapIndexed { position, attemptId ->
+                QuizSetItemEntity(quizSetId = quizSetId, attemptId = attemptId, position = position)
+            },
+        )
+        return quizSetId
+    }
+
+    @Transaction
     open suspend fun replaceQuizWithCompleted(
         quizId: Long,
         completed: CompletedAttemptRecord,
@@ -196,20 +261,45 @@ abstract class AttemptDao {
         return quizId
     }
 
+    @Transaction
+    open suspend fun replaceQuizSetWithCompleted(completed: CompletedQuizSetRecord): Long {
+        val existing = requireNotNull(getQuizSetRow(completed.quizSet.id)) {
+            "Quiz set ${completed.quizSet.id} does not exist"
+        }
+        val memberIds = getQuizSetAttemptIds(existing.id)
+        require(memberIds == completed.attempts.map(CompletedQuizSetAttempt::attemptId)) {
+            "Quiz set members changed"
+        }
+        require(completed.quizSet.status == AttemptStatuses.COMPLETED) {
+            "A completed quiz set must use completed status"
+        }
+        completed.attempts.forEach { attempt ->
+            replaceQuizWithCompleted(attempt.attemptId, attempt.record)
+        }
+        check(updateQuizSetRow(completed.quizSet) == 1) {
+            "Could not update quiz set ${completed.quizSet.id}"
+        }
+        return completed.quizSet.id
+    }
+
     @Query(
         "SELECT id FROM attempts WHERE passage_id = :passageId " +
-            "ORDER BY generated_at_epoch_ms DESC, id DESC LIMIT 1",
+            "ORDER BY generated_at_epoch_ms DESC, id DESC",
     )
-    protected abstract suspend fun findQuizIdForPassage(passageId: Long): Long?
+    protected abstract suspend fun findQuizIdsForPassage(passageId: Long): List<Long>
 
     @Transaction
     open suspend fun getQuizForPassage(passageId: Long): SavedQuizRecord? =
-        findQuizIdForPassage(passageId)?.let { getSavedQuiz(it) }
+        findQuizIdsForPassage(passageId).firstOrNull()?.let { getSavedQuiz(it) }
+
+    @Transaction
+    open suspend fun getQuizzesForPassage(passageId: Long): List<SavedQuizRecord> =
+        findQuizIdsForPassage(passageId).mapNotNull { getSavedQuiz(it) }
 
     @Query(
         """
         SELECT completed_local_date, COUNT(*) AS completed_count
-        FROM attempts
+        FROM quiz_sets
         WHERE status = 'completed'
           AND completed_local_date BETWEEN :year || '-01-01' AND :year || '-12-31'
         GROUP BY completed_local_date
@@ -217,6 +307,27 @@ abstract class AttemptDao {
         """,
     )
     abstract suspend fun getDailyActivity(year: String): List<DailyActivity>
+
+    @Query(
+        """
+        SELECT
+            quiz_sets.completed_local_date,
+            COUNT(
+                DISTINCT CASE WHEN questions.result = 'correct' THEN
+                    attempts.passage_id || CHAR(31) || questions.quiz_type ||
+                    CHAR(31) || LOWER(TRIM(questions.prompt))
+                END
+            ) AS correct_count
+        FROM quiz_sets
+        JOIN quiz_set_items ON quiz_set_items.quiz_set_id = quiz_sets.id
+        JOIN attempts ON attempts.id = quiz_set_items.attempt_id
+        JOIN questions ON questions.attempt_id = quiz_set_items.attempt_id
+        WHERE quiz_sets.status = 'completed'
+        GROUP BY quiz_sets.completed_local_date
+        ORDER BY quiz_sets.completed_local_date
+        """,
+    )
+    abstract suspend fun getDailyCorrectAnswers(): List<DailyCorrectAnswers>
 
     @Query(
         """

@@ -10,6 +10,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
+import kotlin.random.Random
 
 @Serializable
 enum class QuestionType(val wireName: String) {
@@ -72,6 +73,54 @@ data class QuizGenerationResult(
     val failedQuestionCount: Int,
 )
 
+internal data class QuizReusePlan(
+    val reusedQuestions: List<QuizQuestion>,
+    val missingTypeCounts: Map<QuestionType, Int>,
+)
+
+internal fun planQuizReuse(
+    typeCounts: Map<QuestionType, Int>,
+    questionPool: List<QuizQuestion>,
+    random: Random = Random.Default,
+): QuizReusePlan {
+    require(typeCounts.isNotEmpty() && typeCounts.values.all { it > 0 }) {
+        "Question counts must be positive."
+    }
+    require(typeCounts.values.sum() == QuizGenerator.QUESTION_COUNT) {
+        "A quiz must contain exactly ${QuizGenerator.QUESTION_COUNT} requested slots."
+    }
+    require(QuestionType.MATCHING !in typeCounts) {
+        "Matching questions are no longer generated. Use true or false instead."
+    }
+
+    val distinctPool = questionPool.distinctBy { question ->
+        question.type to question.prompt.trim().lowercase()
+    }
+    val reused = mutableListOf<QuizQuestion>()
+    val missing = linkedMapOf<QuestionType, Int>()
+    typeCounts.forEach { (type, count) ->
+        val selected = distinctPool
+            .filter { it.type == type }
+            .shuffled(random)
+            .take(count)
+        reused += selected
+        val missingCount = count - selected.size
+        if (missingCount > 0) missing[type] = missingCount
+    }
+    return QuizReusePlan(reusedQuestions = reused, missingTypeCounts = missing)
+}
+
+internal fun composeQuizQuestions(
+    typeCounts: Map<QuestionType, Int>,
+    reusedQuestions: List<QuizQuestion>,
+    generatedQuestions: List<QuizQuestion>,
+): List<QuizQuestion> {
+    val availableByType = (reusedQuestions + generatedQuestions).groupBy(QuizQuestion::type)
+    return typeCounts.flatMap { (type, count) ->
+        availableByType[type].orEmpty().take(count)
+    }.mapIndexed { index, question -> question.copy(id = "q${index + 1}") }
+}
+
 class QuizGenerationException(message: String, cause: Throwable? = null) : Exception(message, cause)
 
 class QuizGenerator(
@@ -83,23 +132,33 @@ class QuizGenerator(
         request: String,
     ) -> String,
 ) {
-    suspend fun generate(request: QuizGenerationRequest): QuizGenerationResult {
+    suspend fun generate(
+        request: QuizGenerationRequest,
+        existingQuestions: List<QuizQuestion> = emptyList(),
+    ): QuizGenerationResult {
         require(request.typeCounts.isNotEmpty()) { "Select at least one question type." }
         require(request.typeCounts.values.all { it > 0 }) { "Question counts must be positive." }
         require(QuestionType.MATCHING !in request.typeCounts) {
             "Matching questions are no longer generated. Use true or false instead."
         }
-        require(request.typeCounts.values.sum() == QUESTION_COUNT) {
-            "A quiz must request exactly $QUESTION_COUNT questions."
+        val requestedQuestionCount = request.typeCounts.values.sum()
+        require(requestedQuestionCount in 1..QUESTION_COUNT) {
+            "A generation request must contain one to $QUESTION_COUNT questions."
         }
 
         val requestedTypes = request.typeCounts.entries.flatMap { (type, count) -> List(count) { type } }
         val questions = mutableListOf<QuizQuestion>()
         var failedQuestionCount = 0
         requestedTypes.forEachIndexed { index, type ->
-            onQuestionStarted(index + 1, QUESTION_COUNT)
+            onQuestionStarted(index + 1, requestedQuestionCount)
             try {
-                questions += generateQuestion(request, type, index, questions.map(QuizQuestion::prompt))
+                questions += generateQuestion(
+                    request = request,
+                    type = type,
+                    index = index,
+                    existingQuestions = existingQuestions.map(QuizQuestion::prompt) +
+                        questions.map(QuizQuestion::prompt),
+                )
             } catch (_: QuizGenerationException) {
                 failedQuestionCount += 1
             }
@@ -238,18 +297,26 @@ internal fun parseAndValidateQuestion(
 private fun validateMultipleChoice(
     payload: GeneratedMultipleChoicePayload,
 ): Pair<String, QuestionAnswer.MultipleChoice> {
-    val options = payload.options.map(String::trim)
-    require(options.size == 4 && options.all { it.isNotBlank() }) {
-        "Multiple choice requires four non-empty options."
+    val options = payload.options
+        .map(String::trim)
+        .distinctBy(String::lowercase)
+    require(options.size >= 4 && options.all { it.isNotBlank() }) {
+        "Multiple choice requires at least four unique, non-empty options."
     }
-    require(options.map(String::lowercase).toSet().size == 4) {
-        "Multiple-choice options must be unique."
-    }
-    val answerIndex = options.indexOfFirst { it.equals(payload.answer.trim(), ignoreCase = true) }
-    require(answerIndex >= 0) {
+    val answer = options.firstOrNull { it.equals(payload.answer.trim(), ignoreCase = true) }
+    require(answer != null) {
         "Multiple-choice answer must exactly match one option."
     }
-    return payload.question to QuestionAnswer.MultipleChoice(options, answerIndex)
+    val selectedOptions = if (options.size == 4) {
+        options
+    } else {
+        val kept = (options.filterNot { it == answer }.take(3) + answer).toSet()
+        options.filter { it in kept }
+    }
+    return payload.question to QuestionAnswer.MultipleChoice(
+        options = selectedOptions,
+        answerIndex = selectedOptions.indexOf(answer),
+    )
 }
 
 private fun validateOpenResponse(

@@ -4,10 +4,11 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.bukal.ai.QuizPersistenceRepository
-import com.example.bukal.data.local.AttemptHistoryRow
 import com.example.bukal.data.local.AttemptStatuses
 import com.example.bukal.data.local.BukalDatabase
 import com.example.bukal.data.local.DailyActivity
+import com.example.bukal.data.local.DailyCorrectAnswers
+import com.example.bukal.data.local.QuizSetHistoryRow
 import com.example.bukal.data.local.QuizTypes
 import java.time.LocalDate
 import kotlinx.coroutines.CancellationException
@@ -48,9 +49,11 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
             try {
                 val history = repository.getHistory()
                 val dailyActivity = database.attemptDao().getDailyActivity(year.toString())
+                val dailyCorrectAnswers = database.attemptDao().getDailyCorrectAnswers()
                 mutableUiState.value = history.toProfileUiState(
                     selectedYear = year,
                     dailyActivity = dailyActivity,
+                    dailyCorrectAnswers = dailyCorrectAnswers,
                 )
             } catch (error: CancellationException) {
                 throw error
@@ -74,22 +77,35 @@ internal data class StreakSummary(
     val longest: Int,
 )
 
-internal fun List<AttemptHistoryRow>.toProfileUiState(
+internal const val STREAK_PET_DAILY_GOAL = 10
+
+internal fun List<QuizSetHistoryRow>.toProfileUiState(
     selectedYear: Int,
     dailyActivity: List<DailyActivity>,
+    dailyCorrectAnswers: List<DailyCorrectAnswers>,
     today: LocalDate = LocalDate.now(),
 ): ProfileUiState {
     val completed = filter { it.status == AttemptStatuses.COMPLETED }
-    val activeDates = completed.mapTo(mutableSetOf()) { LocalDate.parse(it.completedLocalDate) }
-    val streaks = calculateStreaks(activeDates, today)
+    val activityDates = completed.mapTo(mutableSetOf()) { LocalDate.parse(it.completedLocalDate) }
+    val qualifiedDates = qualifiedStreakDates(dailyCorrectAnswers)
+    val streaks = calculateStreaks(qualifiedDates, today)
     val completedTypes = completed
         .flatMap { it.quizTypes.split('|') }
         .filter { it in QuizTypes.current }
         .toSet()
     val completedQuizCount = dailyActivity.sumOf(DailyActivity::completedCount)
-    val availableYears = (activeDates.map { it.year } + today.year + selectedYear)
+    val availableYears = (
+        activityDates.map { it.year } +
+            qualifiedDates.map { it.year } +
+            today.year +
+            selectedYear
+    )
         .distinct()
         .sortedDescending()
+    val todayCorrectAnswers = dailyCorrectAnswers
+        .firstOrNull { it.completedLocalDate == today.toString() }
+        ?.correctCount
+        ?: 0
 
     return ProfileUiState(
         selectedYear = selectedYear,
@@ -97,6 +113,8 @@ internal fun List<AttemptHistoryRow>.toProfileUiState(
         completedQuizCount = completedQuizCount,
         currentStreakDays = streaks.current,
         longestStreakDays = streaks.longest,
+        todayCorrectAnswers = todayCorrectAnswers,
+        dailyCorrectGoal = STREAK_PET_DAILY_GOAL,
         activityCounts = buildYearActivityCounts(selectedYear, dailyActivity),
         achievements = buildAchievements(
             completedQuizCount = completed.size,
@@ -109,6 +127,15 @@ internal fun List<AttemptHistoryRow>.toProfileUiState(
         ),
     )
 }
+
+internal fun qualifiedStreakDates(
+    dailyCorrectAnswers: List<DailyCorrectAnswers>,
+    dailyGoal: Int = STREAK_PET_DAILY_GOAL,
+): Set<LocalDate> = dailyCorrectAnswers
+    .asSequence()
+    .filter { it.correctCount >= dailyGoal }
+    .map { LocalDate.parse(it.completedLocalDate) }
+    .toSet()
 
 internal fun calculateStreaks(
     activeDates: Set<LocalDate>,

@@ -19,27 +19,32 @@ The first working milestone lets a learner:
 
 After that flow passes, complete the required product expansion:
 
-1. Let the learner select one or more quiz types.
-2. Request five questions distributed across multiple choice, fill in the blank, identification, true or false, and explanation; continue with the successful subset when individual slots fail.
+1. Let the learner select one to five passages with checkboxes and one or more quiz types.
+2. For each passage, distribute five slots across the selected types, randomly reuse distinct matching saved questions up to each type's quota, and sequentially generate only the deficits; continue with the successful subset when individual slots fail.
 3. Check multiple choice and true or false deterministically.
 4. Evaluate fill in the blank, identification, and explanation locally against their hidden reference answer and the top five source matches.
 5. Use only boolean local-AI grading, with `false` whenever the model is unsure, and generate an explanation only on request.
 6. Provide short on-demand local hints without revealing answers.
-7. Save typed attempts and derive a local yearly activity heatmap plus current and longest active-day streaks.
+7. Save typed attempts, derive a local yearly activity heatmap, and derive current and longest streaks from consecutive dates with at least 10 correct answers.
 8. Search imported documents locally through overlapping chunks embedded with Granite Embedding 311M Multilingual R2.
+9. Review all currently saved questions for one material as local tap-to-reveal flashcards without generation or grading.
+10. Let the learner explicitly request one source-linked Markdown summary per imported material, persist the first successful result, and reuse it without another model call.
 
 ## Current Implementation Status
 
-- The launcher opens the model-setup gate and a single Navigation Compose graph now connects all ten approved mock screens.
-- Before generation, Bukal checks Room for a quiz already generated for the selected passage and opens those stored questions instead of running local AI again. New generation sends the bounded passage plus one focus excerpt copied from it to the selected local quiz model, validates one type-specific response per requested slot, and atomically saves the successful question set. Numbered items are focused individually, with paragraph and sentence fallbacks; duplicate retries advance focus while shape retries retain it and report the specific problem. Submission scores multiple choice and true or false immediately. Each answered open item embeds a query, retrieves up to five chunks from the selected passage, and starts a fresh local quiz-model evaluation grounded only in those matches. First completion and later retakes atomically update the same quiz graph; History shows its latest previous score and retained highest score.
+- The launcher opens the model-setup gate and a single Navigation Compose graph connects the approved quiz flow plus file-level flashcard review.
+- Passage selection accepts one to five checked passages and shows saved-question counts. Quiz Setup uses all distinct prior passage questions as a local pool, reuses only matching selected types up to their quotas, and sequentially generates the deficits. Each setup run saves fresh composed attempts and a new quiz set; an exact History retake updates its existing set. Active question IDs are namespaced by passage, and checking/evidence remain passage-specific.
+- Passage selection also opens a read-only flashcard page for the active material. It reads the saved per-passage question graphs in passage order, shows the question first, and flips to the stored answer key on tap without AI or new persistence.
 - History and Profile reuse `BukalBottomNavigation`. Focused quiz-flow screens from Quiz Setup through Results use their own Back, Close, Cancel, Previous/Next, or Done controls without the root footer.
-- The Profile heatmap is horizontally scrollable and uses completed-only Room activity with `0` through `4+` intensity levels. Year switching, cross-year streak calculation, achievements, and milestone progress are derived locally from completed attempts and stored quiz types; Home reuses the calculated current streak and refreshes it after quiz completion.
-- Quiz Setup intentionally uses a focused Back action and sticky Generate action without the root footer, matching its approved reference and nested-flow role.
+- The Profile heatmap is horizontally scrollable and uses completed quiz-set activity with `0` through `4+` intensity levels. Streak qualification separately aggregates persisted `correct` question results and requires 10 per local date. Year switching, cross-year streak calculation, achievements, and milestone progress remain local; Home reuses the calculated current streak and refreshes it after quiz completion.
+- A transparent fire pet floats over Home, History, and Profile only while that current streak exists. It grows at 3, 7, and 14 qualifying days, shows today's correct-answer progress when tapped, can be dragged within the available screen, snaps and minimizes to the nearest left or right edge on release or after seven seconds, and disappears after a full missed qualifying day. This UI state does not add a pet or streak table.
+- Quiz Setup intentionally uses a focused Back action and sticky Start Quiz action without the root footer, matching its approved reference and nested-flow role.
 - Reuse `BukalBottomNavigation` for the permanent Home, History, and Profile footer. It exposes `MainDestination` selection and callbacks but does not own a navigation controller.
 - Use the compact shared scale on upcoming pages: 28/22/20 sp headings and titles, 16/14 sp body text, 14/12 sp labels, 48 dp actions and touch targets, a 64 dp footer, 20–28 dp content icons, and 12–16 dp card padding.
 - The project uses AGP 9 built-in Kotlin, Compose, Material 3, the Compose compiler plugin, and the documented light theme.
 - Gradle uses the locally installed Java 21 runtime; do not restore the broken Java 25 Foojay daemon requirement.
-- Room 2.8.5 with KSP 2.3.12 is configured. The same six entities use schema version 3, with explicit version 1 to 2 and 2 to 3 migrations. Transaction DAOs, validators, embedding-vector codec, one-quiz-per-passage lookup, in-place retake persistence, History loading, and exported schemas are implemented under `data/local` and `ai`.
+- Room 2.8.5 with KSP 2.3.12 is configured. The eight entities use schema version 5, including explicit version 3 to 4 quiz-set backfill and version 4 to 5 optional material-summary migrations. Transaction DAOs, validators, embedding-vector codec, all-attempt passage question-pool lookup, whole-set retake persistence, History loading, one-time summary persistence, and exported schemas are implemented under `data/local` and `ai`.
+- Passage selection exposes **File summary**. A successful first request processes every ordered passage with the selected quiz model, accepts concise Markdown directly, reduces long note sets in bounded batches, rejects JSON and unknown source IDs, renders the saved result through Markwon's CommonMark parser, and saves the final Markdown on the material. Later opens read it directly; real-device quality, latency, memory, relaunch, and airplane-mode verification remain pending.
 - The local codec stores embedding vectors as little-endian 32-bit floats and validates BLOB length against the recorded dimensions.
 - Home imports TXT, text-based PDF, DOCX, and PPTX through Android's document picker and keeps all imported lessons visible. Originals are retained in `files/imported-materials/`; extraction, normalization, bounded passage creation, and overlapping chunk creation run off the UI thread.
 - Import rejects files above 50 MiB and extracted text above 2,000,000 characters. Image-only/scanned PDFs remain unsupported because OCR is excluded.
@@ -78,6 +83,7 @@ After that flow passes, complete the required product expansion:
 - Android `DownloadManager`
 - Android Storage Access Framework
 - `kotlinx.serialization`
+- Markwon `4.6.2` for Android-native CommonMark rendering on the Compose summary screen
 - Room backed by SQLite
 - Android DataStore for small preferences
 - App-specific file storage for models and retained source documents
@@ -133,7 +139,11 @@ system file picker
   -> Granite embedding per chunk
   -> local cosine-similarity search
 
-selected passage + selected quiz types
+one to five selected passages + selected quiz types
+  -> calculate five requested slots per passage
+  -> randomly reuse distinct saved questions within each selected type quota
+  -> sequentially generate only the missing per-type slots
+  -> save fresh composed attempts and a new quiz set
   -> selected-type counts and minimal shape in the system instruction
   -> passage text only as the user message
   -> one type-specific JSON response per requested slot from fresh unsaved model sessions
@@ -144,7 +154,11 @@ selected passage + selected quiz types
   -> local-AI answer evaluation grounded in the retrieved chunks
   -> results and selected source passage
   -> typed local attempt history
-  -> yearly activity heatmap and streaks
+  -> yearly completed-quiz heatmap plus 10-correct daily streak and streak pet
+
+active material
+  -> saved per-passage questions in passage order
+  -> tap-to-reveal flashcards using stored answer keys
 ```
 
 There is no server-side branch in this flow.
@@ -156,7 +170,7 @@ There is no server-side branch in this flow.
 - Ask for JSON only and parse it with `kotlinx.serialization`. Remove at most one outer plain or `json` Markdown code fence; reject commentary and all other surrounding text.
 - Generate each question in its own fresh, unsaved model session. Send only source material as the user message: the selected passage and one focus excerpt copied from it. Never replay conversation history.
 - Model output contains only a non-empty question and valid data for the requested type. Assign the type, question IDs, and source linkage locally.
-- Multiple choice has exactly four non-empty unique options and correct answer text that matches one option; derive the internal answer index locally.
+- Multiple choice requires at least four non-empty unique model options and correct answer text that matches one option. Normalize extras to the matching answer plus the first three distractors, preserve their original order, and derive the internal answer index locally.
 - Discourage negative multiple-choice prompts using `NOT` or `EXCEPT` wording, but accept otherwise usable output.
 - Fill in the blank accepts a blank of any underscore length or a direct question when it has a hidden reference answer.
 - True or false returns one clear yes-or-no question ending in a question mark and a JSON boolean answer, which Bukal maps to the deterministic **True** and **False** choices. Reject statement form and open-ended What, Who, Where, When, Why, How, or Which prompts.
@@ -172,6 +186,10 @@ There is no server-side branch in this flow.
 - Never fabricate missing model-output fields in application code.
 - Evidence improves grounding but is not proof that a question is correct; always let the learner inspect the source passage.
 - Request five slots distributed as evenly as possible across the learner's selected types. Continue with one to five successful questions and report the failed-slot count.
+- Multi-passage selection is capped at five passages, with five requested slots per passage. Reuse never exceeds a selected type's quota, unselected saved types are ignored, and a failed slot is not silently replaced by another type.
+- Namespace active question IDs by passage, evaluate responses against their own passage, and persist the parent quiz set plus every member attempt in one transaction.
+- Generate a file summary only after an explicit learner action. Process every ordered passage with the selected quiz model, hierarchically reduce large note sets, validate final source IDs, and save deterministic Markdown only after the complete result succeeds.
+- A material's first successful summary is immutable: later opens read `materials.summary_markdown` and never call the model. Cancellation or failure leaves the summary fields null so the learner can retry. Granite retrieval is not a substitute for whole-file coverage.
 
 ## Persistence Boundaries
 
@@ -183,6 +201,8 @@ Room / SQLite tables
   passages
   search chunks
   attempts
+  quiz sets
+  quiz set items
   questions
   matching pairs
 
@@ -196,19 +216,22 @@ external-files/
   models/
 ```
 
-Save every successful generated quiz and its one-to-five question rows in one Room transaction before answering. The matching-pairs table remains only for quizzes saved by older builds. Mark the quiz `saved` until checking atomically updates it to `completed`. Later retakes update the same row and child graph, keep `earned_points` as the latest previous score, and retain the maximum in `highest_earned_points`. Store the learner response and result directly on each completed question. Replace one passage's search chunks in a separate indexing transaction.
+Save every successfully composed passage quiz and its one-to-five question rows in one Room transaction before answering. Once every selected passage quiz is ready, create a new ordered quiz set over those fresh attempts. The matching-pairs table remains only for quizzes saved by older builds. Checking atomically updates the set and every member attempt to `completed`. Exact History retakes update the same set and child graphs, keep the set `earned_points` as the latest combined score, and retain the maximum in `highest_earned_points`. Store the learner response and result directly on each completed question. Replace one passage's search chunks in a separate indexing transaction.
 
-The exact version-3 ownership, constraints, indexes, migrations, and delete behavior live in the [SQLite schema](../../docs/sqlite-schema.md) and executable [reference DDL](../../docs/sqlite-schema.sql). Keep the reviewed six-table shape. Saved versus completed lifecycle is represented by `attempts.status`; do not add response, evaluation, accepted-answer, selected-type, draft/session, activity-summary, streak, model-catalog, settings, account, or per-question-type tables unless the documented flow changes and the schema is reviewed again.
+The optional one-time file summary stays on its `materials` row as Markdown plus the generating quiz-model ID and generation time. The DAO writes all three values only while `summary_markdown` is null; the app constructs the complete Markdown before that atomic update, so partial summaries are never persisted.
+
+The exact version-5 ownership, constraints, indexes, migrations, and delete behavior live in the [SQLite schema](../../docs/sqlite-schema.md) and executable [reference DDL](../../docs/sqlite-schema.sql). Keep the reviewed eight-table shape. Per-passage cache lifecycle remains on `attempts.status`; whole-History lifecycle is represented by `quiz_sets.status`. Do not add response, evaluation, accepted-answer, selected-type, activity-summary, streak, model-catalog, settings, account, summary, or per-question-type tables unless the documented flow changes and the schema is reviewed again.
 
 Keep generative and embedding model packages plus retained original documents outside SQLite. Room stores compact per-chunk vector BLOBs, not whole models or documents. DataStore is not a replacement for Room and must not store attempts, passages, questions, or responses.
 
 Export the Room schema and add explicit migrations after a released schema changes. Use an in-memory Room database for DAO, relationship, transaction, and aggregation tests.
 
-Each saved quiz stores its generation timestamp, typed question rows, and answer keys before answering. Each completed attempt stores its completion timestamp/local date, learner responses, deterministic results or local-AI verdicts, and earned/possible points. Selected types are derived from question rows. Profile activity is derived with Room queries filtered to completed attempts:
+Each saved passage quiz stores its generation timestamp, typed question rows, and answer keys before answering. Each completed member attempt stores learner responses and verdicts, while its parent set stores the whole run's completion date and combined score. Selected types are derived from member question rows. Profile activity is derived with Room queries filtered to completed quiz sets:
 
-- One completed quiz equals one activity unit.
+- One completed quiz set equals one activity unit, regardless of passage count.
 - Day intensity is `0`, `1`, `2`, `3`, or `4+` completed quizzes.
-- Streaks count consecutive local dates with at least one completed quiz.
+- Distinct correct questions accumulate across completed quiz sets on their completion local date; copies or retakes with the same passage, type, and normalized prompt count once per date.
+- A streak date requires at least 10 correct question results; streaks count consecutive qualifying dates.
 - App opens, imports, and abandoned quizzes do not count.
 
 ## Delivery Order
@@ -220,14 +243,15 @@ Each saved quiz stores its generation timestamp, typed question rows, and answer
 5. Implement model download, verification, retry, and deletion.
 6. Implement TXT import, passage construction, overlapping search chunks, embeddings, and stable source IDs.
 7. Add document search plus passage and quiz-type selection.
-8. Implement shared and type-specific question contracts with deterministic tests.
-9. Generate, parse, validate, and retry five type-specific slots, then continue with the successful subset and report failed slots.
-10. Implement type-specific answer controls and deterministic scoring.
-11. Implement local-AI evaluation for fill in the blank, identification, and explanation.
-12. Implement results, selected-passage viewing, and on-demand source-grounded explanations.
-13. Persist typed attempts and history.
-14. Derive and display yearly profile activity and streaks.
-15. Test failure cases, relaunch, and airplane-mode use across all required types.
+8. Add user-requested, one-time Markdown file summaries with source-linked whole-file coverage.
+9. Implement shared and type-specific question contracts with deterministic tests.
+10. Generate, parse, validate, and retry five type-specific slots, then continue with the successful subset and report failed slots.
+11. Implement type-specific answer controls and deterministic scoring.
+12. Implement local-AI evaluation for fill in the blank, identification, and explanation.
+13. Implement results, selected-passage viewing, and on-demand source-grounded explanations.
+14. Persist typed attempts and history.
+15. Derive and display yearly profile activity and streaks.
+16. Test failure cases, relaunch, and airplane-mode use across all required types.
 
 Attempt PDF, GPU, or other deferred work only after the complete required flow passes.
 
