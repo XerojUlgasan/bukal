@@ -1,0 +1,24 @@
+*.iml
+.gradle
+.kotlin
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/deploymentTargetSelector.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# Local presentation build intermediates
+/.codex-finalizer/
+/.codex-ppt-build/node_modules
+/.codex-ppt-build/old-outputs/
+/.codex-ppt-build/render-*/
+/.codex-ppt-build/*-montage*.webp

@@ -1,0 +1,169 @@
+<resources>
+    <string name="app_name">Bukal</string>
+    <string name="model_setup_title">Set up offline AI</string>
+    <string name="model_setup_subtitle">Install the fixed search model and at least one quiz model. Downloads resume automatically when possible.</string>
+    <string name="model_quiz_models_title">Quiz models</string>
+    <string name="model_embedding_title">Document search model</string>
+    <string name="model_fixed_embedding">Fixed model for document search</string>
+    <string name="model_minimum_ram">Requires at least %1$d GB device RAM</string>
+    <string name="model_terms_title">Review terms for %1$s</string>
+    <string name="model_terms_message">Gemma 3 is provided under Google’s Gemma Terms of Use and Prohibited Use Policy. By downloading and using the model, you agree to those terms.</string>
+    <string name="model_terms_review_action">Read Gemma terms</string>
+    <string name="model_terms_accept_action">Agree and download</string>
+    <string name="model_recommended">Recommended</string>
+    <string name="model_download_action">Download model</string>
+    <string name="model_retry_action">Retry download</string>
+    <string name="model_use_action">Use this model</string>
+    <string name="model_selected">Selected</string>
+    <string name="model_remove_action">Remove</string>
+    <string name="model_install_action">Install required models</string>
+    <string name="model_reinstall_action">Reinstall damaged model</string>
+    <string name="model_downloading_action">Downloading models…</string>
+    <string name="model_checking_action">Checking models…</string>
+    <string name="model_continue_action">Continue</string>
+    <string name="model_status_checking">Checking installation…</string>
+    <string name="model_status_missing">Not installed</string>
+    <string name="model_status_installed">Installed and verified</string>
+    <string name="model_status_corrupted">File is damaged. Reinstall required.</string>
+    <string name="model_status_downloading">Downloading</string>
+    <string name="model_download_percentage">%1$d%%</string>
+    <string name="model_privacy_note">Lessons and answers stay on this device.</string>
+    <string name="model_help_action">Why is a model required?</string>
+    <string name="model_menu_description">Model setup options</string>
+    <string name="model_doodle_description">Model downloads to this phone</string>
+    <string name="home_model_ready">Model ready</string>
+    <string name="home_title">Ready to study?</string>
+    <string name="home_subtitle">Turn a lesson into a five-question quiz.</string>
+    <string name="home_import_title">Import a lesson</string>
+    <string name="home_import_subtitle">Choose a TXT, text-based PDF, DOCX, or PPTX file.</string>
+    <string name="home_import_action">Choose lesson file</string>
+    <string name="home_importing_action">Importing and extracting text…</string>
+    <string name="home_privacy_note">Stays on this device</string>
+    <string name="home_continue_title">Continue learning</string>
+    <string name="home_continue_action">Continue</string>
+    <string name="home_menu_description">Home options</string>
+    <string name="home_doodle_description">Pencil drawing a small spark</string>
+    <string name="home_material_description">Imported lesson document</string>
+    <string name="home_embedding_indexing">Preparing lesson sections for local search…</string>
+    <string name="home_embedding_ready">Lesson is ready for local search</string>
+    <string name="home_embedding_retry_action">Retry</string>
+    <string name="nav_home">Home</string>
+    <string name="nav_history">History</string>
+    <string name="nav_profile">Profile</string>
+    <string name="home_start_streak">Complete a quiz to start a streak</string>
+    <plurals name="home_study_streak">
+        <item quantity="one">%1$d-day study streak</item>
+        <item quantity="other">%1$d-day study streak</item>
+    </plurals>
+    <string name="passage_title">Choose a passage</string>
+    <string name="passage_back_description">Back to Home</string>
+    <string name="passage_count">%1$d passages</string>
+    <string name="passage_instruction">Pick one passage for your quiz.</string>
+    <string name="passage_continue_action">Continue</string>
+    <string name="quiz_setup_title">Set up your quiz</string>
+    <string name="quiz_setup_back_description">Back to passage selection</string>
+    <string name="quiz_setup_types_title">Choose question types</string>
+    <string name="quiz_setup_types_subtitle">Select one or more. Your quiz will have 5 questions.</string>
+    <string name="quiz_type_multiple_choice">Multiple choice</string>
+    <string name="quiz_type_fill_blank">Fill in the blank</string>
+    <string name="quiz_type_identification">Identification</string>
+    <string name="quiz_type_matching">Matching</string>
+    <string name="quiz_type_explanation">Explanation</string>
+    <string name="quiz_mix_title">Question mix</string>
+    <string name="quiz_mix_empty">Select at least one question type</string>
+    <string name="quiz_mix_each">1 question from each selected type</string>
+    <string name="quiz_setup_ai_note">Fill in the blank, identification, and explanation are checked by AI on this device.</string>
+    <string name="quiz_setup_generate_action">Generate quiz</string>
+    <string name="generating_title">Creating your quiz</string>
+    <string name="generating_back_description">Back to quiz setup</string>
+    <string name="generating_status">Creating question %1$d of %2$d…</string>
+    <string name="generating_subtitle">This may take a moment on your device.</string>
+    <string name="generating_error_title">Quiz generation failed</string>
+    <string name="generating_retry_action">Try again</string>
+    <string name="generating_model_status">%1$s • Offline</string>
+    <string name="cancel_action">Cancel</string>
+    <string name="quiz_close_description">Exit quiz</string>
+    <string name="quiz_menu_description">Quiz options</string>
+    <string name="quiz_question_position">Question %1$d of %2$d</string>
+    <plurals name="quiz_generation_failed_notice">
+        <item quantity="one">%1$d question failed to generate. Showing %2$d of %3$d.</item>
+        <item quantity="other">%1$d questions failed to generate. Showing %2$d of %3$d.</item>
+    </plurals>
+    <string name="quiz_answer_fill_blank">Fill in the blank</string>
+    <string name="quiz_answer_identification">Your answer</string>
+    <string name="quiz_answer_explanation">Your explanation</string>
+    <string name="previous_action">Previous</string>
+    <string name="next_action">Next</string>
+    <string name="checking_title">Checking answers</string>
+    <string name="checking_status">Checking %1$d written answers…</string>
+    <string name="checking_subtitle">Granite finds the 5 closest lesson sections, then your quiz model returns true or false.</string>
+    <string name="checking_local_ai_status">Local AI • Offline</string>
+    <string name="checking_instant_count">%1$d answers checked instantly</string>
+    <string name="checking_review_count">%1$d answers being reviewed</string>
+    <string name="checking_privacy_note">Nothing is sent online.</string>
+    <string name="checking_retry_action">Try checking again</string>
+    <string name="results_title">Quiz results</string>
+    <string name="results_close_description">Close results</string>
+    <string name="results_score">%1$s / %2$s</string>
+    <string name="results_material_summary">%1$s • %2$d questions</string>
+    <string name="results_answers_title">Your answers</string>
+    <string name="result_status_correct">Correct</string>
+    <string name="result_status_incorrect">Incorrect</string>
+    <string name="result_status_unanswered">Unanswered</string>
+    <string name="results_expand_description">Show answer details</string>
+    <string name="results_collapse_description">Hide answer details</string>
+    <string name="results_question">Question</string>
+    <string name="results_your_answer">Your answer</string>
+    <string name="results_expected_answer">Expected answer</string>
+    <string name="results_explain_action">Explain</string>
+    <string name="results_explaining_action">Explaining…</string>
+    <string name="results_ai_explanation">AI explanation</string>
+    <string name="results_view_passage_action">View full passage</string>
+    <string name="done_action">Done</string>
+    <string name="history_title">History</string>
+    <string name="history_subtitle">Each passage keeps one quiz. Retakes update its previous and highest scores.</string>
+    <string name="history_menu_description">History options</string>
+    <string name="history_this_week">This week</string>
+    <string name="history_earlier">Earlier</string>
+    <string name="history_empty">Generated quizzes will appear here so you can take them later.</string>
+    <string name="profile_title">Profile</string>
+    <string name="profile_subtitle">Learning activity on this device.</string>
+    <string name="profile_menu_description">Open Settings</string>
+    <string name="profile_quizzes_completed">quizzes completed</string>
+    <string name="profile_days">%1$d days</string>
+    <string name="profile_current_streak">Current streak</string>
+    <string name="profile_longest_streak">Longest streak</string>
+    <string name="profile_yearly_activity">Yearly activity</string>
+    <string name="profile_swipe_hint">Swipe to see the full year</string>
+    <string name="profile_less">Less</string>
+    <string name="profile_more">More</string>
+    <string name="profile_achievements">Achievements</string>
+    <string name="profile_next_milestones">Next milestones</string>
+    <string name="profile_unlocked">Unlocked</string>
+    <string name="profile_locked">Locked</string>
+    <string name="profile_milestone_progress">%1$d / %2$d %3$s</string>
+    <string name="profile_activity_explanation">Activity counts completed quizzes, not mastery.</string>
+    <string name="profile_day_activity_description">%1$d quizzes completed</string>
+    <string name="settings_title">Settings</string>
+    <string name="settings_back_description">Back to Profile</string>
+    <string name="settings_manage_models">Manage offline models</string>
+    <string name="settings_vector_search_title">Test vector search</string>
+    <string name="settings_vector_search_subtitle">Enter words or a phrase. Granite finds lesson sections with a similar meaning on this device.</string>
+    <string name="settings_vector_search_input">Keywords or phrase</string>
+    <string name="settings_vector_search_action">Search with embeddings</string>
+    <string name="settings_vector_search_empty">No embedded lesson sections are available.</string>
+    <string-array name="profile_months">
+        <item>Jan</item>
+        <item>Feb</item>
+        <item>Mar</item>
+        <item>Apr</item>
+        <item>May</item>
+        <item>Jun</item>
+        <item>Jul</item>
+        <item>Aug</item>
+        <item>Sep</item>
+        <item>Oct</item>
+        <item>Nov</item>
+        <item>Dec</item>
+    </string-array>
+</resources>
