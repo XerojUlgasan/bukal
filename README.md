@@ -61,7 +61,7 @@ On Windows, use `gradlew.bat` instead of `./gradlew`.
 
 1. Keep the device connected to the internet.
 2. On **Set up offline AI**, tap **Install required models**.
-3. Wait for both **Qwen 3 Compact** and **Granite Embedding 311M R2** to finish downloading and verification.
+3. Wait for both **GEMMA 4 E2B IT** and **Granite Embedding 311M R2** to finish downloading and verification.
 4. Continue to Home and import a text-based TXT, PDF, DOCX, or PPTX lesson. Scanned or image-only documents are not supported.
 5. Select one or more passages, choose quiz types, and start the quiz.
 
